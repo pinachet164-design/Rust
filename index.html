@@ -177,13 +177,14 @@
       </div>
 
       <div class="drawer-actions">
-        <button type="button" class="btn" id="btnExport">Экспорт JSON</button>
-        <button type="button" class="btn" id="btnImport">Импорт JSON</button>
+        <button type="button" class="btn" id="btnExport">Сохранить таблицу</button>
+        <button type="button" class="btn" id="btnImport">Загрузить таблицу</button>
         <button type="button" class="btn btn--danger" id="btnReset">Сбросить всё</button>
         <input type="file" id="importFile" accept="application/json,.json" hidden>
       </div>
 
-      <p class="hint">Настройки и ручные цены сохраняются в localStorage этого браузера.</p>
+      <p class="hint">«Сохранить таблицу» — файл rust-economy.json со всей таблицей: названия, категории, базовые цены, рецепты и разборка, плюс настройки и ручные цены. «Загрузить таблицу» возвращает такую же выгрузку обратно в сайт, поэтому дальше таблицу можно вести только здесь. CSV — только для чтения в Excel, обратно он не загружается.</p>
+      <p class="hint">Настройки, загруженная таблица и ручные цены сохраняются в localStorage этого браузера.</p>
     </div>
   </section>
 

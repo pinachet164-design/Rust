@@ -40,13 +40,87 @@
     };
   }
 
+  // Таблица предметов: по умолчанию из js/data.js, но её можно заменить
+  // импортом JSON (своим же экспортом) — тогда она живёт в localStorage.
+  var BASE_ITEMS = DATA.items;
+  var items = BASE_ITEMS.slice();
   var byId = {};
-  DATA.items.forEach(function (item) { byId[item.id] = item; });
+  items.forEach(function (item) { byId[item.id] = item; });
   var categoriesById = {};
   DATA.categories.forEach(function (c) { categoriesById[c.id] = c; });
 
+  var KNOWN_FIELDS = ['id', 'name', 'category', 'basePrice', 'craft', 'recycle', 'verified'];
+
+  function normalizeItems(input) {
+    if (!Array.isArray(input)) { throw new Error('items'); }
+    var seen = {};
+    var list = [];
+    input.forEach(function (raw) {
+      if (!raw || typeof raw !== 'object') { return; }
+      var id = String(raw.id || '').trim();
+      if (!id || seen[id]) { return; }
+      seen[id] = true;
+      var item = {
+        id: id,
+        name: String(raw.name || id),
+        category: categoriesById[raw.category] ? raw.category : 'misc'
+      };
+      if (isFinite(raw.basePrice) && Number(raw.basePrice) >= 0) {
+        item.basePrice = Number(raw.basePrice);
+      }
+      if (raw.verified === false) { item.verified = false; }
+      if (raw.craft && typeof raw.craft === 'object') {
+        var craft = { output: 1, ingredients: [] };
+        if (isFinite(raw.craft.output) && Number(raw.craft.output) > 0) {
+          craft.output = Number(raw.craft.output);
+        }
+        if (Array.isArray(raw.craft.ingredients)) {
+          raw.craft.ingredients.forEach(function (ing) {
+            if (!ing || !ing.id) { return; }
+            var amount = Number(ing.amount);
+            if (!isFinite(amount) || amount <= 0) { return; }
+            craft.ingredients.push({ id: String(ing.id), amount: amount });
+          });
+        }
+        if (craft.ingredients.length) { item.craft = craft; }
+      }
+      if (Array.isArray(raw.recycle) && raw.recycle.length) {
+        var recycle = [];
+        raw.recycle.forEach(function (out) {
+          if (!out || !out.id) { return; }
+          var amount = Number(out.amount);
+          if (!isFinite(amount) || amount <= 0) { return; }
+          recycle.push({ id: String(out.id), amount: amount });
+        });
+        if (recycle.length) { item.recycle = recycle; }
+      }
+      // Поля из будущих версий (время крафта, верстак, стак) не теряем
+      Object.keys(raw).forEach(function (key) {
+        if (KNOWN_FIELDS.indexOf(key) === -1) { item[key] = raw[key]; }
+      });
+      list.push(item);
+    });
+    if (!list.length) { throw new Error('empty'); }
+    return list;
+  }
+
+  // null — вернуть таблицу из js/data.js
+  function setItems(list) {
+    if (list == null) {
+      items = BASE_ITEMS.slice();
+      state.items = null;
+    } else {
+      items = normalizeItems(list);
+      state.items = items;
+    }
+    byId = {};
+    items.forEach(function (item) { byId[item.id] = item; });
+    clearCache();
+  }
+
   var state = {
     settings: defaultSettings(),
+    items: null,
     overrides: {},
     category: 'weapons',
     search: '',
@@ -171,6 +245,7 @@
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
         settings: state.settings,
+        items: state.items,
         overrides: state.overrides,
         view: state.view
       }));
@@ -192,6 +267,9 @@
       if (parsed && parsed.settings) {
         var loaded = sanitizeSettings(parsed.settings);
         Object.keys(loaded).forEach(function (key) { state.settings[key] = loaded[key]; });
+      }
+      if (parsed && Array.isArray(parsed.items)) {
+        try { setItems(parsed.items); } catch (e) { setItems(null); }
       }
       state.overrides = sanitizeOverrides(parsed && parsed.overrides);
       if (parsed && parsed.view === 'table') { state.view = 'table'; }
@@ -284,7 +362,7 @@
 
   function itemsForCategory(categoryId) {
     var cat = categoriesById[categoryId];
-    return DATA.items.filter(function (item) {
+    return items.filter(function (item) {
       if (cat && cat.virtual) {
         return cat.sources.indexOf(item.category) !== -1;
       }
@@ -832,9 +910,11 @@
     try {
       var payload = {
         app: 'rust-economy',
-        version: 2,
+        version: 3,
         exportedAt: new Date().toISOString(),
+        comment: 'items — та же таблица, что в js/data.js. Импорт этого файла возвращает её на место.',
         settings: state.settings,
+        items: items,
         overrides: state.overrides
       };
       var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -846,7 +926,7 @@
       a.click();
       document.body.removeChild(a);
       setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
-      toast('Файл сохранён');
+      toast('Файл сохранён: ' + items.length + ' предметов');
     } catch (e) {
       toast('Не удалось экспортировать');
     }
@@ -860,12 +940,16 @@
         if (!parsed || typeof parsed !== 'object') { throw new Error('bad json'); }
         var settings = sanitizeSettings(parsed.settings || parsed);
         Object.keys(settings).forEach(function (key) { state.settings[key] = settings[key]; });
+        // Сначала таблица, потом ручные цены: они проверяются по новому списку id.
+        if (Array.isArray(parsed.items)) { setItems(parsed.items); }
+        else if (parsed.items === null) { setItems(null); }
         state.overrides = sanitizeOverrides(parsed.overrides);
         clearCache();
         syncSettingsInputs();
+        renderCategories();
         renderAll();
         saveState();
-        toast('Импорт выполнен');
+        toast('Импорт выполнен: ' + items.length + ' предметов');
       } catch (e) {
         toast('Ошибка: файл не подходит');
       }
@@ -877,6 +961,7 @@
   function resetAll() {
     if (!window.confirm('Сбросить настройки и все ручные цены?')) { return; }
     state.settings = defaultSettings();
+    setItems(null);
     state.overrides = {};
     clearCache();
     try { window.localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ничего */ }
