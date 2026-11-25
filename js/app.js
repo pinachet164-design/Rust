@@ -16,7 +16,7 @@
     rubRate: Number(DATA.settings.rubRate) || 5,
     yieldMultiplier: Number(DATA.settings.yieldMultiplier) || 1,
     yieldK: isFinite(DATA.settings.yieldK) ? Number(DATA.settings.yieldK) : 0.7,
-    scrapPrice: Number(DATA.settings.scrapPrice) || 25,
+    scrapPrice: Number(DATA.settings.scrapPrice) || 0.0001,
     markup: isFinite(DATA.settings.markup) ? Number(DATA.settings.markup) : 0.25,
     buyback: {}
   };
@@ -141,7 +141,13 @@
   }
 
   function num(value) {
-    var rounded = Math.round(value);
+    var n = Number(value);
+    if (!isFinite(n)) { return '—'; }
+    // Мелкие цены (скрап) не должны округляться до нуля.
+    if (Math.abs(n) > 0 && Math.abs(n) < 1) {
+      return n.toLocaleString('ru-RU', { maximumFractionDigits: 6 });
+    }
+    var rounded = Math.round(n);
     return Math.abs(rounded) >= 1000
       ? rounded.toLocaleString('ru-RU')
       : String(rounded);
@@ -161,6 +167,9 @@
   function fmtT(value) { return num(value) + ' ₸'; }
   function fmtR(value) { return num(value / rubRate()) + ' ₽'; }
   function fmtS(value) { return num(value / scrapRate()) + ' скрап'; }
+
+  // Сколько скрапа в одном тугрике — для подписи курса.
+  function scrapPerTugrik() { return 1 / scrapRate(); }
   function fmtAlt(value) { return fmtR(value) + ' · ' + fmtS(value); }
 
   function escapeHtml(text) {
@@ -220,7 +229,7 @@
     if (isFinite(input.rubRate) && Number(input.rubRate) > 0) { result.rubRate = clampNumber(input.rubRate, 0.01, 100000, DEFAULTS.rubRate); }
     if (isFinite(input.yieldMultiplier) && Number(input.yieldMultiplier) > 0) { result.yieldMultiplier = clampNumber(input.yieldMultiplier, 0.1, 1000, DEFAULTS.yieldMultiplier); }
     if (isFinite(input.yieldK)) { result.yieldK = clampNumber(input.yieldK, 0, 3, DEFAULTS.yieldK); }
-    if (isFinite(input.scrapPrice) && Number(input.scrapPrice) > 0) { result.scrapPrice = clampNumber(input.scrapPrice, 0.01, 1000000, DEFAULTS.scrapPrice); }
+    if (isFinite(input.scrapPrice) && Number(input.scrapPrice) > 0) { result.scrapPrice = clampNumber(input.scrapPrice, 0.000001, 1000000, DEFAULTS.scrapPrice); }
     if (isFinite(input.markup)) { result.markup = clampNumber(input.markup, -0.9, 10, DEFAULTS.markup); }
     result.buyback = sanitizeBuyback(input.buyback);
     return result;
@@ -266,6 +275,8 @@
       var parsed = JSON.parse(raw);
       if (parsed && parsed.settings) {
         var loaded = sanitizeSettings(parsed.settings);
+        // Старый курс 25 ₸ за скрап заменяем новым: 1 ₸ = 10 000 скрапа.
+        if (Number(parsed.settings.scrapPrice) === 25) { loaded.scrapPrice = DEFAULTS.scrapPrice; }
         Object.keys(loaded).forEach(function (key) { state.settings[key] = loaded[key]; });
       }
       if (parsed && Array.isArray(parsed.items)) {
@@ -875,7 +886,7 @@
     });
     var rateNote = document.getElementById('rateNote');
     if (rateNote) {
-      rateNote.textContent = '1 ₽ = ' + num(state.settings.rubRate) + ' ₸ · 1 скрап = ' + num(state.settings.scrapPrice) + ' ₸';
+      rateNote.textContent = '1 ₽ = ' + num(state.settings.rubRate) + ' ₸ · 1 ₸ = ' + num(scrapPerTugrik()) + ' скрапа';
     }
   }
 
@@ -1174,7 +1185,7 @@
       applySettings({ markup: percent / 100 });
     });
     document.getElementById('setScrap').addEventListener('change', function (e) {
-      applySettings({ scrapPrice: clampNumber(e.target.value, 0.01, 1000000, state.settings.scrapPrice) });
+      applySettings({ scrapPrice: clampNumber(e.target.value, 0.000001, 1000000, state.settings.scrapPrice) });
     });
     [['setBuybackRes', 'resources'], ['setBuybackComp', 'components'], ['setBuybackGoods', 'default']].forEach(function (pair) {
       var el = document.getElementById(pair[0]);

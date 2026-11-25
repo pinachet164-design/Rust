@@ -18,7 +18,7 @@ var RUST_DATA = {
     rubRate: 5,          // 1 рубль = 5 тугриков
     yieldMultiplier: 1,  // множитель добычи на сервере
     yieldK: 0.7,         // показатель степени K в формуле цены сырья
-    scrapPrice: 25,      // цена 1 скрапа в тугриках
+    scrapPrice: 0.0001,  // цена 1 скрапа в тугриках: 1 ₸ = 10 000 скрапа
     markup: 0.25,        // продажа игроку = себестоимость × (1 + наценка)
     buyback: {           // выкуп у игрока = себестоимость × доля
       resources: 0.45,   // сырьё
@@ -596,7 +596,7 @@ var RUST_DATA = {
     { id: 'crude.oil', name: 'Сырая нефть', category: 'resources', basePrice: 4, verified: true },
     { id: 'animal.fat', name: 'Животный жир', category: 'resources', basePrice: 4, verified: true },
     { id: 'bone.fragments', name: 'Кости', category: 'resources', basePrice: 2, verified: true },
-    { id: 'scrap', name: 'Металлолом (scrap)', category: 'resources', basePrice: 25, verified: true },
+    { id: 'scrap', name: 'Металлолом (scrap)', category: 'resources', basePrice: 0.0001, verified: true },
 
     /* ---------------- КОМПОНЕНТЫ ---------------- */
     {
