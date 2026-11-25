@@ -1,0 +1,848 @@
+/*
+ * Экономика Rust — логика и интерфейс.
+ * Обычный скрипт, без ES-модулей: работает при открытии index.html с диска.
+ */
+(function () {
+  'use strict';
+
+  var DATA = window.RUST_DATA;
+  if (!DATA) { return; }
+
+  var STORAGE_KEY = 'rust-econ-v1';
+
+  var DEFAULTS = {
+    rubRate: Number(DATA.settings.rubRate) || 5,
+    yieldMultiplier: Number(DATA.settings.yieldMultiplier) || 1,
+    yieldK: isFinite(DATA.settings.yieldK) ? Number(DATA.settings.yieldK) : 0.7,
+    markup: Number(DATA.settings.markup) || 0,
+    discount: Number(DATA.settings.discount) || 0
+  };
+
+  var byId = {};
+  DATA.items.forEach(function (item) { byId[item.id] = item; });
+  var categoriesById = {};
+  DATA.categories.forEach(function (c) { categoriesById[c.id] = c; });
+
+  var state = {
+    settings: {
+      rubRate: DEFAULTS.rubRate,
+      yieldMultiplier: DEFAULTS.yieldMultiplier,
+      yieldK: DEFAULTS.yieldK,
+      markup: DEFAULTS.markup,
+      discount: DEFAULTS.discount
+    },
+    overrides: {},
+    category: 'weapons',
+    search: '',
+    craftOnly: false,
+    sort: 'name',
+    openedId: null
+  };
+
+  /* =====================  Утилиты  ===================== */
+
+  function clampNumber(value, min, max, fallback) {
+    var n = Number(value);
+    if (!isFinite(n)) { return fallback; }
+    if (n < min) { return min; }
+    if (n > max) { return max; }
+    return n;
+  }
+
+  function num(value) {
+    var rounded = Math.round(value);
+    return Math.abs(rounded) >= 1000
+      ? rounded.toLocaleString('ru-RU')
+      : String(rounded);
+  }
+
+  function money(tugriks) {
+    var rate = state.settings.rubRate > 0 ? state.settings.rubRate : 1;
+    return num(tugriks) + ' ₸ (' + num(tugriks / rate) + ' ₽)';
+  }
+
+  function escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function categoryName(id) {
+    var cat = categoriesById[id];
+    return cat ? cat.name : id;
+  }
+
+  function plural(count, one, few, many) {
+    var mod10 = count % 10;
+    var mod100 = count % 100;
+    if (mod10 === 1 && mod100 !== 11) { return one; }
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) { return few; }
+    return many;
+  }
+
+  var toastTimer = null;
+  function toast(message) {
+    var el = document.getElementById('toast');
+    if (!el) { return; }
+    el.textContent = message;
+    el.classList.add('toast--show');
+    if (toastTimer) { clearTimeout(toastTimer); }
+    toastTimer = setTimeout(function () {
+      el.classList.remove('toast--show');
+    }, 1800);
+  }
+
+  /* =====================  Сохранение  ===================== */
+
+  function sanitizeSettings(input) {
+    var result = {
+      rubRate: DEFAULTS.rubRate,
+      yieldMultiplier: DEFAULTS.yieldMultiplier,
+      yieldK: DEFAULTS.yieldK,
+      markup: DEFAULTS.markup,
+      discount: DEFAULTS.discount
+    };
+    if (!input || typeof input !== 'object') { return result; }
+    if (isFinite(input.rubRate) && Number(input.rubRate) > 0) { result.rubRate = clampNumber(input.rubRate, 0.01, 100000, DEFAULTS.rubRate); }
+    if (isFinite(input.yieldMultiplier) && Number(input.yieldMultiplier) > 0) { result.yieldMultiplier = clampNumber(input.yieldMultiplier, 0.1, 1000, DEFAULTS.yieldMultiplier); }
+    if (isFinite(input.yieldK)) { result.yieldK = clampNumber(input.yieldK, 0, 3, DEFAULTS.yieldK); }
+    if (isFinite(input.markup)) { result.markup = clampNumber(input.markup, -0.9, 10, DEFAULTS.markup); }
+    if (isFinite(input.discount)) { result.discount = clampNumber(input.discount, -0.9, 0.9, DEFAULTS.discount); }
+    return result;
+  }
+
+  function sanitizeOverrides(input) {
+    var result = {};
+    if (!input || typeof input !== 'object') { return result; }
+    Object.keys(input).forEach(function (id) {
+      if (!byId[id]) { return; }
+      var raw = input[id];
+      if (!raw || typeof raw !== 'object') { return; }
+      var entry = {};
+      if (isFinite(raw.buy) && Number(raw.buy) >= 0) { entry.buy = Number(raw.buy); }
+      if (isFinite(raw.sell) && Number(raw.sell) >= 0) { entry.sell = Number(raw.sell); }
+      if (entry.buy != null || entry.sell != null) { result[id] = entry; }
+    });
+    return result;
+  }
+
+  function saveState() {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        settings: state.settings,
+        overrides: state.overrides
+      }));
+    } catch (e) {
+      toast('Не удалось сохранить: хранилище недоступно');
+    }
+  }
+
+  function loadState() {
+    var raw;
+    try {
+      raw = window.localStorage.getItem(STORAGE_KEY);
+    } catch (e) {
+      return;
+    }
+    if (!raw) { return; }
+    try {
+      var parsed = JSON.parse(raw);
+      if (parsed && parsed.settings) {
+        var loaded = sanitizeSettings(parsed.settings);
+        Object.keys(loaded).forEach(function (key) { state.settings[key] = loaded[key]; });
+      }
+      state.overrides = sanitizeOverrides(parsed && parsed.overrides);
+    } catch (e) {
+      // повреждённые данные не должны ломать страницу
+    }
+  }
+
+  /* =====================  Экономика  ===================== */
+
+  var fairCache = {};
+
+  function clearCache() {
+    fairCache = {};
+  }
+
+  // Цена сырья при текущем множителе добычи: basePrice / (multiplier ^ K)
+  function rawPrice(item) {
+    var multiplier = state.settings.yieldMultiplier;
+    if (!(multiplier > 0)) { multiplier = 1; }
+    var k = state.settings.yieldK;
+    return item.basePrice / Math.pow(multiplier, k);
+  }
+
+  // Справедливая цена: стоимость крафта либо ручная баз цена.
+  // Рекурсивно, с защитой от циклов и кэшем.
+  function fairPrice(id, stack) {
+    if (fairCache[id] != null) { return fairCache[id]; }
+    var item = byId[id];
+    if (!item) { return 0; }
+
+    stack = stack || [];
+    if (stack.indexOf(id) !== -1) {
+      // цикл в рецептах — используем базовую цену или 0
+      return item.basePrice || 0;
+    }
+    stack.push(id);
+
+    var value;
+    if (item.craft && item.craft.ingredients && item.craft.ingredients.length) {
+      var sum = 0;
+      item.craft.ingredients.forEach(function (ing) {
+        if (!byId[ing.id]) { return; }
+        sum += fairPrice(ing.id, stack) * (Number(ing.amount) || 0);
+      });
+      value = sum / (Number(item.craft.output) || 1);
+    } else if (item.basePrice != null) {
+      value = item.category === 'resources' ? rawPrice(item) : Number(item.basePrice);
+    } else {
+      value = 0;
+    }
+
+    stack.pop();
+    fairCache[id] = value;
+    return value;
+  }
+
+  function buyPrice(id) {
+    var ov = state.overrides[id];
+    if (ov && ov.buy != null) { return ov.buy; }
+    return fairPrice(id) * (1 + state.settings.markup);
+  }
+
+  function sellPrice(id) {
+    var ov = state.overrides[id];
+    if (ov && ov.sell != null) { return ov.sell; }
+    return fairPrice(id) * (1 - state.settings.discount);
+  }
+
+  function recycleValue(item) {
+    if (!item.recycle || !item.recycle.length) { return 0; }
+    var sum = 0;
+    item.recycle.forEach(function (out) {
+      if (!byId[out.id]) { return; }
+      sum += fairPrice(out.id) * (Number(out.amount) || 0);
+    });
+    return sum;
+  }
+
+  /* =====================  Данные списка  ===================== */
+
+  function itemsForCategory(categoryId) {
+    var cat = categoriesById[categoryId];
+    return DATA.items.filter(function (item) {
+      if (cat && cat.virtual) {
+        return cat.sources.indexOf(item.category) !== -1;
+      }
+      return item.category === categoryId;
+    });
+  }
+
+  function visibleItems() {
+    var query = state.search.trim().toLowerCase();
+    var list = itemsForCategory(state.category).filter(function (item) {
+      if (state.craftOnly && !(item.craft && item.craft.ingredients && item.craft.ingredients.length)) {
+        return false;
+      }
+      if (query) {
+        var inName = item.name.toLowerCase().indexOf(query) !== -1;
+        var inId = item.id.toLowerCase().indexOf(query) !== -1;
+        if (!inName && !inId) { return false; }
+      }
+      return true;
+    });
+
+    if (state.sort === 'price-asc') {
+      list.sort(function (a, b) { return buyPrice(a.id) - buyPrice(b.id); });
+    } else if (state.sort === 'price-desc') {
+      list.sort(function (a, b) { return buyPrice(b.id) - buyPrice(a.id); });
+    } else {
+      list.sort(function (a, b) { return a.name.localeCompare(b.name, 'ru'); });
+    }
+    return list;
+  }
+
+  /* =====================  Интерфейс  ===================== */
+
+  function renderCategories() {
+    var nav = document.getElementById('cats');
+    var html = '';
+    DATA.categories.forEach(function (cat) {
+      var active = cat.id === state.category ? ' is-active' : '';
+      html += '<button type="button" class="cat' + active + '" data-cat="' + escapeHtml(cat.id) + '">' +
+        escapeHtml(cat.name) + '</button>';
+    });
+    nav.innerHTML = html;
+  }
+
+  function chipsHtml(item, stack) {
+    if (!item.craft || !item.craft.ingredients.length) { return ''; }
+    stack = stack || [];
+    var html = '<div class="chips">';
+    item.craft.ingredients.forEach(function (ing) {
+      var sub = byId[ing.id];
+      if (!sub) { return; }
+      var amount = (Number(ing.amount) || 0) * (1 / (Number(item.craft.output) || 1));
+      var shown = amount % 1 === 0 ? String(amount) : amount.toFixed(2).replace('.', ',');
+      html += '<button type="button" class="chip" data-open="' + escapeHtml(sub.id) + '" title="Открыть карточку">' +
+        escapeHtml(sub.name) + ' ×' + shown + '</button>';
+    });
+    html += '</div>';
+    return html;
+  }
+
+  function renderList() {
+    var list = visibleItems();
+    var ul = document.getElementById('list');
+    var empty = document.getElementById('empty');
+    var count = document.getElementById('count');
+
+    var title = document.getElementById('catTitle');
+    if (title) { title.textContent = categoryName(state.category); }
+    count.textContent = list.length + ' ' + plural(list.length, 'предмет', 'предмета', 'предметов');
+
+    if (!list.length) {
+      ul.innerHTML = '';
+      empty.hidden = false;
+      return;
+    }
+    empty.hidden = true;
+
+    var html = '';
+    list.forEach(function (item) {
+      var badge = item.verified === false ? '<span class="tag" title="Рецепт или разборка требуют проверки">проверить</span>' : '';
+      var buy = buyPrice(item.id);
+      html += '<li class="item' + (state.openedId === item.id ? ' is-open' : '') + '" data-id="' + escapeHtml(item.id) + '">' +
+        '<div class="item-main">' +
+          '<div class="item-row">' +
+            '<button type="button" class="item-name" data-open="' + escapeHtml(item.id) + '">' +
+              escapeHtml(item.name) + badge +
+            '</button>' +
+            chipsHtml(item) +
+          '</div>' +
+          '<div class="item-sub">' +
+            '<button type="button" class="copy" data-copy="' + escapeHtml(item.id) + '" title="Скопировать shortname">' +
+              escapeHtml(item.id) +
+            '</button>' +
+            '<span class="copy-hint">Копировать</span>' +
+          '</div>' +
+        '</div>' +
+        '<div class="item-price">' +
+          '<strong>' + num(buy) + ' ₸</strong>' +
+          '<span>' + num(buy / state.settings.rubRate) + ' ₽</span>' +
+        '</div>' +
+      '</li>';
+    });
+    ul.innerHTML = html;
+  }
+
+  function ingredientTree(item, depth, stack, out) {
+    if (!item.craft || depth > 5) { return out; }
+    item.craft.ingredients.forEach(function (ing) {
+      var sub = byId[ing.id];
+      if (!sub) { return; }
+      var unit = fairPrice(sub.id);
+      var amount = Number(ing.amount) || 0;
+      out.push({
+        depth: depth,
+        id: sub.id,
+        name: sub.name,
+        amount: amount,
+        unit: unit,
+        total: unit * amount,
+        verified: sub.verified
+      });
+      if (sub.craft && stack.indexOf(sub.id) === -1) {
+        ingredientTree(sub, depth + 1, stack.concat([sub.id]), out);
+      }
+    });
+    return out;
+  }
+
+  function renderCard() {
+    var card = document.getElementById('card');
+    var item = state.openedId ? byId[state.openedId] : null;
+
+    if (!item) {
+      card.innerHTML = '<div class="card-empty">' +
+        '<p>Выберите предмет слева, чтобы увидеть рецепт, разборку и цены.</p>' +
+        '</div>';
+      card.classList.remove('card--open');
+      return;
+    }
+
+    var fair = fairPrice(item.id);
+    var buy = buyPrice(item.id);
+    var sell = sellPrice(item.id);
+    var spread = buy > 0 ? ((buy - sell) / buy) * 100 : 0;
+    var recycleSum = recycleValue(item);
+    var isCraftable = !!(item.craft && item.craft.ingredients.length);
+
+    var html = '';
+    html += '<div class="card-head">' +
+      '<div class="card-title">' +
+        '<h2>' + escapeHtml(item.name) + '</h2>' +
+        '<div class="card-meta">' +
+          '<span>' + escapeHtml(categoryName(item.category)) + '</span>' +
+          '<button type="button" class="copy-link" data-copy="' + escapeHtml(item.id) + '">' +
+            escapeHtml(item.id) +
+          '</button>' +
+          (item.verified === false ? '<span class="tag">проверить</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<button type="button" class="icon-btn" id="cardClose" aria-label="Закрыть карточку">×</button>' +
+    '</div>';
+
+    html += '<div class="card-body">';
+
+    if (isCraftable) {
+      html += '<div class="warn warn--info">Стоимость крафта (' + num(fair) + ' ₸ за ' +
+        (item.craft.output > 1 ? item.craft.output + ' шт.' : '1 шт.') + ')</div>';
+    } else if (item.category === 'resources') {
+      html += '<div class="warn warn--info">Сырьё: базовая цена при x1 — ' + num(item.basePrice) +
+        ' ₸, при множителе ×' + state.settings.yieldMultiplier + ' — ' + num(fair) + ' ₸</div>';
+    } else {
+      html += '<div class="warn warn--info">Цена задана вручную в data.js (basePrice = ' +
+        num(fair) + ' ₸)</div>';
+    }
+
+    // Арбитраж
+    if (item.recycle && item.recycle.length && buy < recycleSum) {
+      html += '<div class="warn warn--danger">Арбитраж: выгодно купить и разобрать — покупка ' +
+        num(buy) + ' ₸, разборка оценивается в ' + num(recycleSum) + ' ₸.</div>';
+    }
+    if (isCraftable && sell > fair) {
+      html += '<div class="warn warn--danger">Продажа игроку (' + num(sell) +
+        ' ₸) выше стоимости крафта (' + num(fair) + ' ₸) — игроки будут крафтить на продажу.</div>';
+    }
+    if (item.verified === false) {
+      html += '<div class="warn warn--warn">Рецепт или разборка не проверены — уточните данные в data.js.</div>';
+    }
+
+    html += '<div class="price-grid">' +
+      '<div class="price-cell">' +
+        '<span class="label">Игрок покупает</span>' +
+        '<strong>' + num(buy) + ' ₸</strong>' +
+        '<span class="rub">' + num(buy / state.settings.rubRate) + ' ₽</span>' +
+      '</div>' +
+      '<div class="price-cell">' +
+        '<span class="label">Игрок продаёт</span>' +
+        '<strong>' + num(sell) + ' ₸</strong>' +
+        '<span class="rub">' + num(sell / state.settings.rubRate) + ' ₽</span>' +
+      '</div>' +
+    '</div>';
+
+    html += '<p class="spread">Спред: <strong>' + spread.toFixed(0) + '%</strong>' +
+      ' · наценка ' + (state.settings.markup * 100).toFixed(0) +
+      '% · выкуп −' + (state.settings.discount * 100).toFixed(0) + '%</p>';
+
+    if (isCraftable) {
+      var rows = ingredientTree(item, 0, [item.id], []);
+      html += '<h3>Дерево крафта</h3>';
+      html += '<ul class="tree">';
+      rows.forEach(function (row) {
+        html += '<li class="tree-row" style="padding-left:' + (row.depth * 14) + 'px">' +
+          '<button type="button" class="tree-link" data-open="' + escapeHtml(row.id) + '">' +
+            escapeHtml(row.name) + (row.verified === false ? ' <span class="tag">проверить</span>' : '') +
+          '</button>' +
+          '<span class="tree-amount">×' + num(row.amount) + '</span>' +
+          '<span class="tree-price">' + num(row.total) + ' ₸</span>' +
+        '</li>';
+      });
+      html += '</ul>';
+      html += '<p class="total-line">Итог крафта: <strong>' + num(fair) + ' ₸</strong> (' +
+        num(fair / state.settings.rubRate) + ' ₽) за ' + (item.craft.output || 1) + ' шт.</p>';
+    }
+
+    if (item.recycle && item.recycle.length) {
+      html += '<h3>Разборка</h3><ul class="tree">';
+      item.recycle.forEach(function (out) {
+        var sub = byId[out.id];
+        if (!sub) { return; }
+        var amount = Number(out.amount) || 0;
+        html += '<li class="tree-row">' +
+          '<button type="button" class="tree-link" data-open="' + escapeHtml(sub.id) + '">' +
+            escapeHtml(sub.name) + '</button>' +
+          '<span class="tree-amount">×' + num(amount) + '</span>' +
+          '<span class="tree-price">' + num(fairPrice(sub.id) * amount) + ' ₸</span>' +
+        '</li>';
+      });
+      html += '</ul>';
+      html += '<p class="total-line">Оценка разборки: <strong>' + num(recycleSum) + ' ₸</strong> (' +
+        num(recycleSum / state.settings.rubRate) + ' ₽)</p>';
+    }
+
+    // Ручные цены
+    var ov = state.overrides[item.id] || {};
+    html += '<h3>Ручные цены</h3>' +
+      '<div class="override">' +
+        '<label>Покупка, ₸' +
+          '<input type="number" min="0" step="1" data-override="buy" value="' +
+            (ov.buy != null ? String(ov.buy) : '') + '" placeholder="' + num(buy) + '">' +
+        '</label>' +
+        '<label>Продажа, ₸' +
+          '<input type="number" min="0" step="1" data-override="sell" value="' +
+            (ov.sell != null ? String(ov.sell) : '') + '" placeholder="' + num(sell) + '">' +
+        '</label>' +
+      '</div>' +
+      '<button type="button" class="btn btn--ghost" id="resetOverride">Сбросить ручные цены</button>';
+
+    html += '</div>';
+    card.innerHTML = html;
+    card.classList.add('card--open');
+  }
+
+  function renderAll() {
+    renderCategories();
+    renderList();
+    renderCard();
+  }
+
+  /* =====================  Настройки  ===================== */
+
+  function syncSettingsInputs() {
+    var pairs = [
+      ['setMult', state.settings.yieldMultiplier],
+      ['multQuick', state.settings.yieldMultiplier],
+      ['setK', state.settings.yieldK],
+      ['setRate', state.settings.rubRate],
+      ['setMarkup', Math.round(state.settings.markup * 1000) / 10],
+      ['setDiscount', Math.round(state.settings.discount * 1000) / 10]
+    ];
+    pairs.forEach(function (pair) {
+      var el = document.getElementById(pair[0]);
+      if (el && document.activeElement !== el) {
+        el.value = String(pair[1]);
+      }
+    });
+    document.querySelectorAll('[data-mult]').forEach(function (btn) {
+      var value = Number(btn.getAttribute('data-mult'));
+      btn.classList.toggle('is-active', Math.abs(value - state.settings.yieldMultiplier) < 0.0001);
+    });
+    var rateNote = document.getElementById('rateNote');
+    if (rateNote) {
+      rateNote.textContent = '1 ₽ = ' + num(state.settings.rubRate) + ' ₸';
+    }
+  }
+
+  function applySettings(patch) {
+    Object.keys(patch).forEach(function (key) {
+      state.settings[key] = patch[key];
+    });
+    clearCache();
+    syncSettingsInputs();
+    renderList();
+    renderCard();
+    saveState();
+  }
+
+  function openSettings(open) {
+    var drawer = document.getElementById('settings');
+    var overlay = document.getElementById('settingsOverlay');
+    drawer.hidden = !open;
+    overlay.hidden = !open;
+    var cardOpen = window.innerWidth <= 900 && !!state.openedId;
+    document.body.classList.toggle('no-scroll', open || cardOpen);
+    if (open) {
+      syncSettingsInputs();
+      var first = document.getElementById('setMult');
+      if (first) { first.focus(); }
+    }
+  }
+
+  /* =====================  Экспорт / импорт  ===================== */
+
+  function exportJson() {
+    try {
+      var payload = {
+        app: 'rust-economy',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        settings: state.settings,
+        overrides: state.overrides
+      };
+      var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'rust-economy.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      toast('Файл сохранён');
+    } catch (e) {
+      toast('Не удалось экспортировать');
+    }
+  }
+
+  function importJson(file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var parsed = JSON.parse(String(reader.result));
+        if (!parsed || typeof parsed !== 'object') { throw new Error('bad json'); }
+        var settings = sanitizeSettings(parsed.settings || parsed);
+        Object.keys(settings).forEach(function (key) { state.settings[key] = settings[key]; });
+        state.overrides = sanitizeOverrides(parsed.overrides);
+        clearCache();
+        syncSettingsInputs();
+        renderAll();
+        saveState();
+        toast('Импорт выполнен');
+      } catch (e) {
+        toast('Ошибка: файл не подходит');
+      }
+    };
+    reader.onerror = function () { toast('Не удалось прочитать файл'); };
+    reader.readAsText(file);
+  }
+
+  function resetAll() {
+    if (!window.confirm('Сбросить настройки и все ручные цены?')) { return; }
+    state.settings = {
+      rubRate: DEFAULTS.rubRate,
+      yieldMultiplier: DEFAULTS.yieldMultiplier,
+      yieldK: DEFAULTS.yieldK,
+      markup: DEFAULTS.markup,
+      discount: DEFAULTS.discount
+    };
+    state.overrides = {};
+    clearCache();
+    try { window.localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ничего */ }
+    syncSettingsInputs();
+    renderAll();
+    toast('Сброшено');
+  }
+
+  /* =====================  Копирование  ===================== */
+
+  function copyText(text) {
+    function fallback() {
+      try {
+        var area = document.createElement('textarea');
+        area.value = text;
+        area.setAttribute('readonly', '');
+        area.style.position = 'fixed';
+        area.style.left = '-9999px';
+        document.body.appendChild(area);
+        area.select();
+        var ok = document.execCommand('copy');
+        document.body.removeChild(area);
+        toast(ok ? 'Скопировано' : 'Не удалось скопировать');
+      } catch (e) {
+        toast('Не удалось скопировать');
+      }
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () {
+        toast('Скопировано');
+      }, fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  /* =====================  События  ===================== */
+
+  function bindEvents() {
+    document.getElementById('search').addEventListener('input', function (e) {
+      state.search = e.target.value || '';
+      renderList();
+    });
+
+    document.getElementById('craftOnly').addEventListener('change', function (e) {
+      state.craftOnly = e.target.checked;
+      renderList();
+    });
+
+    document.getElementById('sort').addEventListener('change', function (e) {
+      state.sort = e.target.value;
+      renderList();
+    });
+
+    document.getElementById('cats').addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-cat]');
+      if (!btn) { return; }
+      state.category = btn.getAttribute('data-cat');
+      state.openedId = null;
+      renderCategories();
+      renderList();
+      renderCard();
+      var list = document.getElementById('list');
+      if (list) { list.scrollTop = 0; }
+      if (window.innerWidth <= 900) {
+        var content = document.getElementById('content');
+        if (content) { content.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      }
+    });
+
+    document.getElementById('list').addEventListener('click', function (e) {
+      var copyBtn = e.target.closest('[data-copy]');
+      if (copyBtn) {
+        copyText(copyBtn.getAttribute('data-copy'));
+        return;
+      }
+      var openBtn = e.target.closest('[data-open]');
+      if (openBtn) {
+        openItem(openBtn.getAttribute('data-open'));
+        return;
+      }
+      var row = e.target.closest('.item');
+      if (row) { openItem(row.getAttribute('data-id')); }
+    });
+
+    document.getElementById('card').addEventListener('click', function (e) {
+      if (e.target.closest('#cardClose')) {
+        closeCard();
+        return;
+      }
+      var copyBtn = e.target.closest('[data-copy]');
+      if (copyBtn) {
+        copyText(copyBtn.getAttribute('data-copy'));
+        return;
+      }
+      var openBtn = e.target.closest('[data-open]');
+      if (openBtn) {
+        openItem(openBtn.getAttribute('data-open'));
+        return;
+      }
+      if (e.target.closest('#resetOverride')) {
+        delete state.overrides[state.openedId];
+        saveState();
+        renderCard();
+        renderList();
+        toast('Ручные цены сброшены');
+      }
+    });
+
+    document.getElementById('card').addEventListener('change', function (e) {
+      var input = e.target.closest('[data-override]');
+      if (!input || !state.openedId) { return; }
+      var id = state.openedId;
+      var kind = input.getAttribute('data-override');
+      var raw = input.value.trim();
+      var entry = state.overrides[id] || {};
+      if (raw === '') {
+        delete entry[kind];
+      } else {
+        var value = Number(raw.replace(',', '.'));
+        if (!isFinite(value) || value < 0) {
+          toast('Введите положительное число');
+          renderCard();
+          return;
+        }
+        entry[kind] = value;
+      }
+      if (entry.buy == null && entry.sell == null) {
+        delete state.overrides[id];
+      } else {
+        state.overrides[id] = entry;
+      }
+      saveState();
+      renderCard();
+      renderList();
+      toast('Цена сохранена');
+    });
+
+    document.getElementById('multQuick').addEventListener('change', function (e) {
+      var value = clampNumber(e.target.value, 0.1, 1000, state.settings.yieldMultiplier);
+      applySettings({ yieldMultiplier: value });
+    });
+
+    document.querySelectorAll('[data-mult]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        applySettings({ yieldMultiplier: Number(btn.getAttribute('data-mult')) });
+      });
+    });
+
+    document.getElementById('btnSettings').addEventListener('click', function () { openSettings(true); });
+    document.getElementById('btnCloseSettings').addEventListener('click', function () { openSettings(false); });
+    document.getElementById('settingsOverlay').addEventListener('click', function () { openSettings(false); });
+
+    document.getElementById('setMult').addEventListener('change', function (e) {
+      applySettings({ yieldMultiplier: clampNumber(e.target.value, 0.1, 1000, state.settings.yieldMultiplier) });
+    });
+    document.getElementById('setK').addEventListener('change', function (e) {
+      applySettings({ yieldK: clampNumber(e.target.value, 0, 3, state.settings.yieldK) });
+    });
+    document.getElementById('setRate').addEventListener('change', function (e) {
+      applySettings({ rubRate: clampNumber(e.target.value, 0.01, 100000, state.settings.rubRate) });
+    });
+    document.getElementById('setMarkup').addEventListener('change', function (e) {
+      var percent = clampNumber(e.target.value, -90, 1000, state.settings.markup * 100);
+      applySettings({ markup: percent / 100 });
+    });
+    document.getElementById('setDiscount').addEventListener('change', function (e) {
+      var percent = clampNumber(e.target.value, -90, 90, state.settings.discount * 100);
+      applySettings({ discount: percent / 100 });
+    });
+
+    document.getElementById('btnExport').addEventListener('click', exportJson);
+    document.getElementById('btnImport').addEventListener('click', function () {
+      document.getElementById('importFile').click();
+    });
+    document.getElementById('importFile').addEventListener('change', function (e) {
+      var file = e.target.files && e.target.files[0];
+      if (file) { importJson(file); }
+      e.target.value = '';
+    });
+    document.getElementById('btnReset').addEventListener('click', resetAll);
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') {
+        if (!document.getElementById('settings').hidden) {
+          openSettings(false);
+        } else if (state.openedId) {
+          closeCard();
+        }
+      }
+    });
+
+    // На телефоне карточка — на весь экран; при ресайзе возвращаем раскладку.
+    window.addEventListener('resize', function () {
+      document.body.classList.remove('no-scroll');
+    });
+  }
+
+  function openItem(id) {
+    if (!byId[id]) { return; }
+    state.openedId = id;
+    renderList();
+    renderCard();
+    if (window.innerWidth <= 900) {
+      document.body.classList.add('no-scroll');
+      var card = document.getElementById('card');
+      card.scrollTop = 0;
+    }
+  }
+
+  function closeCard() {
+    state.openedId = null;
+    document.body.classList.remove('no-scroll');
+    renderCard();
+    renderList();
+  }
+
+  /* =====================  Старт  ===================== */
+
+  function init() {
+    loadState();
+    clearCache();
+    renderCategories();
+    renderList();
+    renderCard();
+    syncSettingsInputs();
+    bindEvents();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();

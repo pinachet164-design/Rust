@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Экономика Rust — калькулятор цен</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Экономика <span>Rust</span></div>
+
+    <div class="toolbar">
+      <label class="search">
+        <span class="visually-hidden">Поиск по названию или shortname</span>
+        <input type="search" id="search" placeholder="Поиск: автомат, rifle.ak…" autocomplete="off">
+      </label>
+
+      <label class="switch">
+        <input type="checkbox" id="craftOnly">
+        <span>только крафтовые</span>
+      </label>
+
+      <label class="select">
+        <span class="visually-hidden">Сортировка</span>
+        <select id="sort">
+          <option value="name">По названию</option>
+          <option value="price-asc">Цена: по возрастанию</option>
+          <option value="price-desc">Цена: по убыванию</option>
+        </select>
+      </label>
+
+      <div class="mult">
+        <label for="multQuick">Добыча ×</label>
+        <input type="number" id="multQuick" min="0.1" step="0.5" inputmode="decimal" value="1">
+        <div class="presets">
+          <button type="button" data-mult="1">x1</button>
+          <button type="button" data-mult="2">x2</button>
+          <button type="button" data-mult="3">x3</button>
+          <button type="button" data-mult="5">x5</button>
+          <button type="button" data-mult="10">x10</button>
+        </div>
+      </div>
+
+      <span class="rate-note" id="rateNote">1 ₽ = 5 ₸</span>
+
+      <button type="button" class="btn" id="btnSettings">Настройки</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <nav class="cats" id="cats" aria-label="Категории предметов"></nav>
+
+    <section class="content" id="content">
+      <div class="list-head">
+        <h1 id="catTitle">Оружие</h1>
+        <span class="count" id="count">0 предметов</span>
+      </div>
+
+      <ul class="items" id="list"></ul>
+      <p class="empty" id="empty" hidden>Ничего не найдено. Попробуйте другой запрос.</p>
+    </section>
+
+    <aside class="card" id="card" aria-live="polite">
+      <div class="card-empty">
+        <p>Выберите предмет слева, чтобы увидеть рецепт, разборку и цены.</p>
+      </div>
+    </aside>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <div class="overlay" id="settingsOverlay" hidden></div>
+
+  <section class="drawer" id="settings" aria-labelledby="settingsTitle" hidden>
+    <div class="drawer-head">
+      <h2 id="settingsTitle">Настройки экономики</h2>
+      <button type="button" class="icon-btn" id="btnCloseSettings" aria-label="Закрыть настройки">×</button>
+    </div>
+
+    <div class="drawer-body">
+      <div class="field">
+        <label for="setMult">Множитель добычи</label>
+        <input type="number" id="setMult" min="0.1" step="0.5" inputmode="decimal">
+        <div class="presets presets--wide">
+          <button type="button" data-mult="1">x1</button>
+          <button type="button" data-mult="2">x2</button>
+          <button type="button" data-mult="3">x3</button>
+          <button type="button" data-mult="5">x5</button>
+          <button type="button" data-mult="10">x10</button>
+        </div>
+        <p class="hint">Чем выше множитель, тем дешевле сырьё. Цена сырья = базовая ÷ (множитель ^ K).</p>
+      </div>
+
+      <div class="field">
+        <label for="setK">Показатель K</label>
+        <input type="number" id="setK" min="0" max="3" step="0.05" inputmode="decimal">
+        <p class="hint">0 — цена падает строго пропорционально, 1 — линейно растёт добыча. По умолчанию 0.7.</p>
+      </div>
+
+      <div class="field">
+        <label for="setRate">Курс: тугриков за 1 ₽</label>
+        <input type="number" id="setRate" min="0.01" step="0.5" inputmode="decimal">
+        <p class="hint">Базовая валюта — тугрик. Цены показываются в обеих валютах.</p>
+      </div>
+
+      <div class="field">
+        <label for="setMarkup">Наценка продажи, %</label>
+        <input type="number" id="setMarkup" min="-90" step="1" inputmode="decimal">
+        <p class="hint">Цена покупки = справедливая × (1 + наценка). По умолчанию 25%.</p>
+      </div>
+
+      <div class="field">
+        <label for="setDiscount">Скидка выкупа, %</label>
+        <input type="number" id="setDiscount" min="-90" max="90" step="1" inputmode="decimal">
+        <p class="hint">Цена продажи = справедливая × (1 − скидка). По умолчанию 25%.</p>
+      </div>
+
+      <div class="drawer-actions">
+        <button type="button" class="btn" id="btnExport">Экспорт JSON</button>
+        <button type="button" class="btn" id="btnImport">Импорт JSON</button>
+        <button type="button" class="btn btn--danger" id="btnReset">Сбросить всё</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+
+      <p class="hint">Настройки и ручные цены сохраняются в localStorage этого браузера.</p>
+    </div>
+  </section>
+
+  <script src="js/data.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
