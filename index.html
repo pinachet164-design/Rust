@@ -44,6 +44,11 @@
 
       <span class="rate-note" id="rateNote">1 ₽ = 5 ₸</span>
 
+      <div class="view-switch" id="viewSwitch" role="group" aria-label="Вид отображения">
+        <button type="button" data-view="list" class="is-active" aria-pressed="true">Список</button>
+        <button type="button" data-view="table" aria-pressed="false">Таблица</button>
+      </div>
+
       <button type="button" class="btn" id="btnSettings">Настройки</button>
     </div>
   </header>
@@ -55,6 +60,43 @@
       <div class="list-head">
         <h1 id="catTitle">Оружие</h1>
         <span class="count" id="count">0 предметов</span>
+      </div>
+
+      <div class="table-panel" id="tablePanel" hidden>
+        <div class="table-actions">
+          <label class="table-action">
+            <span>Округлить</span>
+            <select id="roundStep">
+              <option value="1">до 1 ₸</option>
+              <option value="5">до 5 ₸</option>
+              <option value="10" selected>до 10 ₸</option>
+              <option value="50">до 50 ₸</option>
+              <option value="100">до 100 ₸</option>
+              <option value="500">до 500 ₸</option>
+            </select>
+          </label>
+          <button type="button" class="btn btn--ghost" id="btnRound">Применить</button>
+          <button type="button" class="btn btn--ghost" id="btnResetPrices">Сбросить ручные</button>
+          <button type="button" class="btn" id="btnCsv">Выгрузить CSV</button>
+          <span class="table-hint">Покупка округляется вверх, продажа — вниз. Действия применяются к видимым строкам.</span>
+        </div>
+      </div>
+
+      <div class="table-wrap" id="tableWrap" hidden>
+        <table class="ptable">
+          <thead>
+            <tr>
+              <th scope="col">Предмет</th>
+              <th scope="col" class="num">Расчётная</th>
+              <th scope="col" class="num">Покупка</th>
+              <th scope="col" class="num">Продажа</th>
+              <th scope="col" class="num">Спред</th>
+              <th scope="col" class="num">Разборка</th>
+              <th scope="col"><span class="visually-hidden">Сброс ручных цен</span></th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
       </div>
 
       <ul class="items" id="list"></ul>

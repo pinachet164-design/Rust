@@ -36,6 +36,7 @@
     search: '',
     craftOnly: false,
     sort: 'name',
+    view: 'list',
     openedId: null
   };
 
@@ -132,7 +133,8 @@
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
         settings: state.settings,
-        overrides: state.overrides
+        overrides: state.overrides,
+        view: state.view
       }));
     } catch (e) {
       toast('Не удалось сохранить: хранилище недоступно');
@@ -154,6 +156,7 @@
         Object.keys(loaded).forEach(function (key) { state.settings[key] = loaded[key]; });
       }
       state.overrides = sanitizeOverrides(parsed && parsed.overrides);
+      if (parsed && parsed.view === 'table') { state.view = 'table'; }
     } catch (e) {
       // повреждённые данные не должны ломать страницу
     }
@@ -305,9 +308,11 @@
     if (title) { title.textContent = categoryName(state.category); }
     count.textContent = list.length + ' ' + plural(list.length, 'предмет', 'предмета', 'предметов');
 
+    renderTable(list);
+
     if (!list.length) {
       ul.innerHTML = '';
-      empty.hidden = false;
+      empty.hidden = state.view === 'table';
       return;
     }
     empty.hidden = true;
@@ -338,6 +343,200 @@
       '</li>';
     });
     ul.innerHTML = html;
+  }
+
+  /* =====================  Таблица цен  ===================== */
+
+  function setView(view) {
+    state.view = view === 'table' ? 'table' : 'list';
+    saveState();
+    syncView();
+    renderList();
+    renderCard();
+  }
+
+  function syncView() {
+    var isTable = state.view === 'table';
+    var panel = document.getElementById('tablePanel');
+    var wrap = document.getElementById('tableWrap');
+    var list = document.getElementById('list');
+    var empty = document.getElementById('empty');
+    if (panel) { panel.hidden = !isTable; }
+    if (wrap) { wrap.hidden = !isTable; }
+    if (list) { list.hidden = isTable; }
+    if (empty && isTable) { empty.hidden = true; }
+    document.querySelectorAll('[data-view]').forEach(function (btn) {
+      var active = btn.getAttribute('data-view') === state.view;
+      btn.classList.toggle('is-active', active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  }
+
+  function spreadPercent(buy, sell) {
+    return buy > 0 ? ((buy - sell) / buy) * 100 : 0;
+  }
+
+  function renderTable(list) {
+    var body = document.getElementById('tableBody');
+    if (!body) { return; }
+    list = list || visibleItems();
+
+    if (!list.length) {
+      body.innerHTML = '<tr><td class="table-empty" colspan="7">Ничего не найдено. Попробуйте другой запрос.</td></tr>';
+      return;
+    }
+
+    var html = '';
+    list.forEach(function (item) {
+      var fair = fairPrice(item.id);
+      var buy = buyPrice(item.id);
+      var sell = sellPrice(item.id);
+      var spread = spreadPercent(buy, sell);
+      var recycle = recycleValue(item);
+      var ov = state.overrides[item.id] || {};
+      var buyManual = ov.buy != null;
+      var sellManual = ov.sell != null;
+      var manual = buyManual || sellManual;
+      var idAttr = escapeHtml(item.id);
+      var nameAttr = escapeHtml(item.name);
+
+      html += '<tr class="prow' + (manual ? ' is-manual' : '') + '" data-id="' + idAttr + '">' +
+        '<th scope="row">' +
+          '<button type="button" class="pname" data-open="' + idAttr + '">' +
+            nameAttr + (item.verified === false ? ' <span class="tag">проверить</span>' : '') +
+          '</button>' +
+          '<span class="pshort">' + idAttr + '</span>' +
+        '</th>' +
+        '<td class="num">' +
+          '<span class="pfair">' + num(fair) + ' ₸</span>' +
+          '<span class="prub">' + num(fair / state.settings.rubRate) + ' ₽</span>' +
+        '</td>' +
+        '<td class="num">' +
+          '<input class="pinput' + (buyManual ? ' is-manual' : '') + '" type="number" min="0" step="1" inputmode="decimal"' +
+            ' data-id="' + idAttr + '" data-field="buy"' +
+            ' value="' + (buyManual ? String(Math.round(ov.buy * 100) / 100) : '') + '"' +
+            ' placeholder="' + num(buy) + '" aria-label="Покупка: ' + nameAttr + '">' +
+        '</td>' +
+        '<td class="num">' +
+          '<input class="pinput' + (sellManual ? ' is-manual' : '') + '" type="number" min="0" step="1" inputmode="decimal"' +
+            ' data-id="' + idAttr + '" data-field="sell"' +
+            ' value="' + (sellManual ? String(Math.round(ov.sell * 100) / 100) : '') + '"' +
+            ' placeholder="' + num(sell) + '" aria-label="Продажа: ' + nameAttr + '">' +
+        '</td>' +
+        '<td class="num ' + (spread <= 0 ? 'pspread--bad' : 'pspread--ok') + '">' + spread.toFixed(0) + '%</td>' +
+        '<td class="num">' + (recycle > 0 ? num(recycle) + ' ₸' : '—') + '</td>' +
+        '<td class="num">' +
+          (manual ? '<button type="button" class="row-reset" data-reset="' + idAttr +
+            '" title="Сбросить ручные цены" aria-label="Сбросить ручные цены: ' + nameAttr + '">↺</button>' : '') +
+        '</td>' +
+      '</tr>';
+    });
+    body.innerHTML = html;
+  }
+
+  function commitTablePrice(id, field, raw) {
+    if (!byId[id] || (field !== 'buy' && field !== 'sell')) { return; }
+    var entry = state.overrides[id] || {};
+    var text = String(raw == null ? '' : raw).trim();
+    if (text === '') {
+      delete entry[field];
+    } else {
+      var value = Number(text.replace(',', '.'));
+      if (!isFinite(value) || value < 0) {
+        toast('Введите положительное число');
+        renderList();
+        return;
+      }
+      entry[field] = Math.round(value * 100) / 100;
+    }
+    if (entry.buy == null && entry.sell == null) {
+      delete state.overrides[id];
+    } else {
+      state.overrides[id] = entry;
+    }
+    saveState();
+    renderList();
+    renderCard();
+    toast('Цена сохранена');
+  }
+
+  // Покупка округляется вверх, продажа — вниз, с записью ручных цен.
+  function roundVisiblePrices(step) {
+    step = Number(step) || 0;
+    if (!(step > 0)) { return; }
+    var list = visibleItems();
+    var changed = 0;
+    list.forEach(function (item) {
+      var buy = Math.ceil(buyPrice(item.id) / step) * step;
+      var sell = Math.floor(sellPrice(item.id) / step) * step;
+      if (sell < 0) { sell = 0; }
+      var entry = state.overrides[item.id] || {};
+      if (entry.buy === buy && entry.sell === sell) { return; }
+      entry.buy = buy;
+      entry.sell = sell;
+      state.overrides[item.id] = entry;
+      changed += 1;
+    });
+    saveState();
+    renderList();
+    renderCard();
+    toast(changed ? 'Округлено позиций: ' + changed : 'Все цены уже округлены');
+  }
+
+  function resetVisiblePrices() {
+    var list = visibleItems();
+    var count = 0;
+    list.forEach(function (item) {
+      if (state.overrides[item.id]) {
+        delete state.overrides[item.id];
+        count += 1;
+      }
+    });
+    saveState();
+    renderList();
+    renderCard();
+    toast(count ? 'Сброшено ручных цен: ' + count : 'Ручных цен нет');
+  }
+
+  function exportCsv() {
+    var list = visibleItems();
+    var rows = [['shortname', 'Название', 'Категория', 'Расчётная, ₸', 'Покупка, ₸', 'Продажа, ₸', 'Спред, %', 'Разборка, ₸', 'Ручная цена']];
+    list.forEach(function (item) {
+      var ov = state.overrides[item.id] || {};
+      var buy = buyPrice(item.id);
+      var sell = sellPrice(item.id);
+      var recycle = recycleValue(item);
+      rows.push([
+        item.id,
+        item.name,
+        categoryName(item.category),
+        Math.round(fairPrice(item.id)),
+        Math.round(buy),
+        Math.round(sell),
+        spreadPercent(buy, sell).toFixed(1),
+        recycle > 0 ? Math.round(recycle) : '',
+        ov.buy != null || ov.sell != null ? 'да' : ''
+      ]);
+    });
+    var csv = rows.map(function (row) {
+      return row.map(function (cell) {
+        return '"' + String(cell).replace(/"/g, '""') + '"';
+      }).join(';');
+    }).join('\r\n');
+    try {
+      var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'rust-prices-' + state.category + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      toast('CSV: ' + list.length + ' строк');
+    } catch (e) {
+      toast('Не удалось выгрузить CSV');
+    }
   }
 
   function ingredientTree(item, depth, stack, out) {
@@ -665,6 +864,51 @@
       renderList();
     });
 
+    document.getElementById('viewSwitch').addEventListener('click', function (e) {
+      var btn = e.target.closest('[data-view]');
+      if (!btn) { return; }
+      setView(btn.getAttribute('data-view'));
+    });
+
+    var tableWrap = document.getElementById('tableWrap');
+    tableWrap.addEventListener('click', function (e) {
+      var openBtn = e.target.closest('[data-open]');
+      if (openBtn) {
+        openItem(openBtn.getAttribute('data-open'));
+        return;
+      }
+      var resetBtn = e.target.closest('[data-reset]');
+      if (resetBtn) {
+        delete state.overrides[resetBtn.getAttribute('data-reset')];
+        saveState();
+        renderList();
+        renderCard();
+        toast('Ручные цены сброшены');
+      }
+    });
+    tableWrap.addEventListener('change', function (e) {
+      var input = e.target.closest('.pinput');
+      if (!input) { return; }
+      commitTablePrice(input.getAttribute('data-id'), input.getAttribute('data-field'), input.value);
+    });
+    tableWrap.addEventListener('keydown', function (e) {
+      var input = e.target.closest('.pinput');
+      if (!input) { return; }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        input.blur();
+      } else if (e.key === 'Escape') {
+        renderList();
+        input.blur();
+      }
+    });
+
+    document.getElementById('btnRound').addEventListener('click', function () {
+      roundVisiblePrices(document.getElementById('roundStep').value);
+    });
+    document.getElementById('btnResetPrices').addEventListener('click', resetVisiblePrices);
+    document.getElementById('btnCsv').addEventListener('click', exportCsv);
+
     document.getElementById('cats').addEventListener('click', function (e) {
       var btn = e.target.closest('[data-cat]');
       if (!btn) { return; }
@@ -834,6 +1078,7 @@
     loadState();
     clearCache();
     renderCategories();
+    syncView();
     renderList();
     renderCard();
     syncSettingsInputs();
