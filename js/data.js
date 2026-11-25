@@ -6,6 +6,8 @@
  * Поля предмета:
  *   id       — shortname (игровой идентификатор, он же используется в рецептах)
  *   name     — название по-русски
+ *   en       — английское имя из таблицы Amigos; по нему сайт узнаёт строку
+ *              при импорте .xlsx (кнопка «Загрузить таблицу»)
  *   category — id категории
  *   basePrice— базовая цена в тугриках при множителе добычи x1
  *              (для сырья цена делится на множитель, для остальных — как есть)
@@ -55,7 +57,7 @@ var RUST_DATA = {
   items: [
     /* ---------------- ОРУЖИЕ ---------------- */
     {
-      id: 'rifle.ak', name: 'Автомат Калашникова', category: 'weapons', stack: 1, verified: true,
+      id: 'rifle.ak', name: 'Автомат Калашникова', en: 'Assault Rifle', category: 'weapons', stack: 1, verified: true,
       craft: { time: 35, bench: 3, output: 1, ingredients: [
         { id: 'wood', amount: 200 },
         { id: 'metal.refined', amount: 50 },
@@ -68,7 +70,7 @@ var RUST_DATA = {
       ]
     },
     {
-      id: 'rifle.bolt', name: 'Снайперская винтовка', category: 'weapons', stack: 1, verified: true,
+      id: 'rifle.bolt', name: 'Снайперская винтовка', en: 'Bolt Action Rifle', category: 'weapons', stack: 1, verified: true,
       craft: { time: 35, bench: 3, output: 1, ingredients: [
         { id: 'metal.refined', amount: 20 },
         { id: 'metalpipe', amount: 3 },
@@ -81,7 +83,7 @@ var RUST_DATA = {
       ]
     },
     {
-      id: 'rifle.semiauto', name: 'Полуавтоматическая винтовка', category: 'weapons', stack: 1, verified: true,
+      id: 'rifle.semiauto', name: 'Полуавтоматическая винтовка', en: 'Semi-Automatic Rifle', category: 'weapons', stack: 1, verified: true,
       craft: { time: 12.5, bench: 2, output: 1, ingredients: [
         { id: 'metal.fragments', amount: 450 },
         { id: 'metal.refined', amount: 4 },
@@ -95,7 +97,7 @@ var RUST_DATA = {
       ]
     },
     {
-      id: 'rifle.sks', name: 'Самозарядный карабин СКС', category: 'weapons', stack: 1, verified: true,
+      id: 'rifle.sks', name: 'Самозарядный карабин СКС', en: 'SKS', category: 'weapons', stack: 1, verified: true,
       craft: { time: 30, bench: 3, output: 1, ingredients: [
         { id: 'metal.fragments', amount: 200 },
         { id: 'metal.refined', amount: 12 },
@@ -109,7 +111,7 @@ var RUST_DATA = {
       ]
     },
     {
-      id: 'rifle.lr300', name: 'Штурмовая винтовка LR-300', category: 'weapons', stack: 1, verified: false,
+      id: 'rifle.lr300', name: 'Штурмовая винтовка LR-300', en: 'LR-300 Assault Rifle', category: 'weapons', stack: 1, verified: false,
       // В таблице Amigos у LR-300 нет рецепта (0 сек / 0 шт) — рецепт ниже не из неё.
       craft: { output: 1, ingredients: [
         { id: 'metal.refined', amount: 25 },
@@ -122,7 +124,7 @@ var RUST_DATA = {
       ]
     },
     {
-      id: 'smg.mp5', name: 'Пистолет-пулемёт MP5A4', category: 'weapons', stack: 1, verified: true,
+      id: 'smg.mp5', name: 'Пистолет-пулемёт MP5A4', en: 'MP5A4', category: 'weapons', stack: 1, verified: true,
       craft: { time: 30, bench: 3, output: 1, ingredients: [
         { id: 'metal.refined', amount: 15 },
         { id: 'smgbody', amount: 1 },
@@ -134,7 +136,7 @@ var RUST_DATA = {
       ]
     },
     {
-      id: 'smg.2', name: 'Самодельный пистолет-пулемёт', category: 'weapons', stack: 1, verified: true,
+      id: 'smg.2', name: 'Самодельный пистолет-пулемёт', en: 'Custom SMG', category: 'weapons', stack: 1, verified: true,
       craft: { time: 12.5, bench: 2, output: 1, ingredients: [
         { id: 'metal.refined', amount: 8 },
         { id: 'metalspring', amount: 1 }
@@ -145,7 +147,7 @@ var RUST_DATA = {
       ]
     },
     {
-      id: 'smg.thompson', name: 'Пистолет-пулемёт Томпсона', category: 'weapons', stack: 1, verified: true,
+      id: 'smg.thompson', name: 'Пистолет-пулемёт Томпсона', en: 'Thompson', category: 'weapons', stack: 1, verified: true,
       craft: { time: 12.5, bench: 2, output: 1, ingredients: [
         { id: 'wood', amount: 100 },
         { id: 'metal.refined', amount: 10 },
@@ -159,7 +161,7 @@ var RUST_DATA = {
       ]
     },
     {
-      id: 'shotgun.pump', name: 'Помповое ружьё', category: 'weapons', stack: 1, verified: true,
+      id: 'shotgun.pump', name: 'Помповое ружьё', en: 'Pump Shotgun', category: 'weapons', stack: 1, verified: true,
       craft: { time: 12.5, bench: 2, output: 1, ingredients: [
         { id: 'metal.refined', amount: 15 },
         { id: 'metalspring', amount: 1 },
@@ -171,7 +173,7 @@ var RUST_DATA = {
       ]
     },
     {
-      id: 'shotgun.double', name: 'Двуствольное ружьё', category: 'weapons', stack: 1, verified: true,
+      id: 'shotgun.double', name: 'Двуствольное ружьё', en: 'Double Barrel Shotgun', category: 'weapons', stack: 1, verified: true,
       craft: { time: 3.8, bench: 1, output: 1, ingredients: [
         { id: 'metal.fragments', amount: 175 },
         { id: 'metalpipe', amount: 2 }
@@ -182,7 +184,7 @@ var RUST_DATA = {
       ]
     },
     {
-      id: 'pistol.python', name: 'Револьвер Python', category: 'weapons', stack: 1, verified: true,
+      id: 'pistol.python', name: 'Револьвер Python', en: 'Python Revolver', category: 'weapons', stack: 1, verified: true,
       craft: { time: 12.5, bench: 2, output: 1, ingredients: [
         { id: 'metal.refined', amount: 10 },
         { id: 'metalpipe', amount: 3 },
@@ -195,7 +197,7 @@ var RUST_DATA = {
       ]
     },
     {
-      id: 'pistol.semiauto', name: 'Полуавтоматический пистолет', category: 'weapons', stack: 1, verified: true,
+      id: 'pistol.semiauto', name: 'Полуавтоматический пистолет', en: 'Semi-Automatic Pistol', category: 'weapons', stack: 1, verified: true,
       craft: { time: 12.5, bench: 2, output: 1, ingredients: [
         { id: 'metal.refined', amount: 4 },
         { id: 'metalpipe', amount: 1 },
@@ -208,7 +210,7 @@ var RUST_DATA = {
       ]
     },
     {
-      id: 'pistol.revolver', name: 'Револьвер', category: 'weapons', stack: 1, verified: true,
+      id: 'pistol.revolver', name: 'Револьвер', en: 'Revolver', category: 'weapons', stack: 1, verified: true,
       craft: { time: 3.8, bench: 1, output: 1, ingredients: [
         { id: 'metal.fragments', amount: 125 },
         { id: 'cloth', amount: 25 },
@@ -220,7 +222,7 @@ var RUST_DATA = {
       ]
     },
     {
-      id: 'pistol.m92', name: 'Пистолет M92', category: 'weapons', stack: 1, verified: false,
+      id: 'pistol.m92', name: 'Пистолет M92', en: 'M92 Pistol', category: 'weapons', stack: 1, verified: false,
       // В таблице Amigos рецепта нет — рецепт ниже не из неё.
       craft: { output: 1, ingredients: [
         { id: 'metalpipe', amount: 1 },
@@ -232,7 +234,7 @@ var RUST_DATA = {
       ]
     },
     {
-      id: 'rocket.launcher', name: 'Ручной гранатомёт', category: 'weapons', stack: 1, verified: false,
+      id: 'rocket.launcher', name: 'Ручной гранатомёт', en: 'Multiple Grenade Launcher', category: 'weapons', stack: 1, verified: false,
       // В таблице Amigos рецепта нет — рецепт ниже не из неё.
       craft: { output: 1, ingredients: [
         { id: 'metal.refined', amount: 40 },
@@ -245,7 +247,7 @@ var RUST_DATA = {
       ]
     },
     {
-      id: 'flamethrower', name: 'Огнемёт', category: 'weapons', stack: 1, verified: true,
+      id: 'flamethrower', name: 'Огнемёт', en: 'Flamethrower', category: 'weapons', stack: 1, verified: true,
       craft: { time: 12.5, bench: 3, output: 1, ingredients: [
         { id: 'metal.refined', amount: 15 },
         { id: 'lowgradefuel', amount: 100 },
@@ -258,19 +260,19 @@ var RUST_DATA = {
       ]
     },
     {
-      id: 'spear.wooden', name: 'Деревянное копьё', category: 'weapons', stack: 1, verified: true,
+      id: 'spear.wooden', name: 'Деревянное копьё', en: 'Wooden Spear', category: 'weapons', stack: 1, verified: true,
       craft: { time: 3.8, bench: 1, output: 1, ingredients: [
         { id: 'wood', amount: 300 }
       ] }
     },
     {
-      id: 'knife.bone', name: 'Костяной нож', category: 'weapons', stack: 1, verified: true,
+      id: 'knife.bone', name: 'Костяной нож', en: 'Bone Knife', category: 'weapons', stack: 1, verified: true,
       craft: { time: 3.8, bench: 1, output: 1, ingredients: [
         { id: 'bone.fragments', amount: 30 }
       ] }
     },
     {
-      id: 'machete', name: 'Мачете', category: 'weapons', stack: 1, verified: true,
+      id: 'machete', name: 'Мачете', en: 'Machete', category: 'weapons', stack: 1, verified: true,
       craft: { time: 12.5, bench: 1, output: 1, ingredients: [
         { id: 'wood', amount: 100 },
         { id: 'metal.fragments', amount: 40 }
@@ -279,21 +281,21 @@ var RUST_DATA = {
 
     /* ---------------- БОЕПРИПАСЫ ---------------- */
     {
-      id: 'ammo.rifle', name: 'Патрон 5.56', category: 'ammo', stack: 5000, verified: true,
+      id: 'ammo.rifle', name: 'Патрон 5.56', en: '5.56 Rifle Ammo', category: 'ammo', stack: 5000, verified: true,
       craft: { time: 0.8, bench: 1, output: 3, ingredients: [
         { id: 'metal.fragments', amount: 10 },
         { id: 'gunpowder', amount: 5 }
       ] }
     },
     {
-      id: 'ammo.rifle.hv', name: 'Патрон 5.56 (высокоскоростной)', category: 'ammo', stack: 5000, verified: true,
+      id: 'ammo.rifle.hv', name: 'Патрон 5.56 (высокоскоростной)', en: 'HV 5.56 Rifle Ammo', category: 'ammo', stack: 5000, verified: true,
       craft: { time: 0.8, bench: 2, output: 3, ingredients: [
         { id: 'metal.fragments', amount: 10 },
         { id: 'gunpowder', amount: 10 }
       ] }
     },
     {
-      id: 'ammo.rifle.explosive', name: 'Патрон 5.56 (разрывной)', category: 'ammo', stack: 5000, verified: true,
+      id: 'ammo.rifle.explosive', name: 'Патрон 5.56 (разрывной)', en: 'Explosive 5.56 Rifle Ammo', category: 'ammo', stack: 5000, verified: true,
       craft: { time: 0.8, bench: 3, output: 2, ingredients: [
         { id: 'metal.fragments', amount: 10 },
         { id: 'gunpowder', amount: 20 },
@@ -301,7 +303,7 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'ammo.rifle.incendiary', name: 'Патрон 5.56 (зажигательный)', category: 'ammo', stack: 5000, verified: true,
+      id: 'ammo.rifle.incendiary', name: 'Патрон 5.56 (зажигательный)', en: 'Incendiary 5.56 Rifle Ammo', category: 'ammo', stack: 5000, verified: true,
       craft: { time: 0.8, bench: 2, output: 2, ingredients: [
         { id: 'metal.fragments', amount: 10 },
         { id: 'gunpowder', amount: 10 },
@@ -309,21 +311,21 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'ammo.pistol', name: 'Пистолетный патрон', category: 'ammo', stack: 2000, verified: true,
+      id: 'ammo.pistol', name: 'Пистолетный патрон', en: 'Pistol Bullet', category: 'ammo', stack: 2000, verified: true,
       craft: { time: 0.8, bench: 1, output: 4, ingredients: [
         { id: 'metal.fragments', amount: 10 },
         { id: 'gunpowder', amount: 5 }
       ] }
     },
     {
-      id: 'ammo.pistol.hv', name: 'Пистолетный патрон (высокоскоростной)', category: 'ammo', stack: 5000, verified: true,
+      id: 'ammo.pistol.hv', name: 'Пистолетный патрон (высокоскоростной)', en: 'HV Pistol Ammo', category: 'ammo', stack: 5000, verified: true,
       craft: { time: 0.8, bench: 2, output: 4, ingredients: [
         { id: 'metal.fragments', amount: 10 },
         { id: 'gunpowder', amount: 10 }
       ] }
     },
     {
-      id: 'ammo.pistol.incendiary', name: 'Пистолетный патрон (зажигательный)', category: 'ammo', stack: 5000, verified: true,
+      id: 'ammo.pistol.incendiary', name: 'Пистолетный патрон (зажигательный)', en: 'Incendiary Pistol Bullet', category: 'ammo', stack: 5000, verified: true,
       craft: { time: 0.8, bench: 2, output: 3, ingredients: [
         { id: 'metal.fragments', amount: 10 },
         { id: 'gunpowder', amount: 10 },
@@ -331,28 +333,28 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'ammo.handmade.shell', name: 'Самодельный патрон (дробь)', category: 'ammo', stack: 5000, verified: true,
+      id: 'ammo.handmade.shell', name: 'Самодельный патрон (дробь)', en: 'Handmade Shell', category: 'ammo', stack: 5000, verified: true,
       craft: { time: 0.8, bench: 1, output: 2, ingredients: [
         { id: 'wood', amount: 5 },
         { id: 'gunpowder', amount: 5 }
       ] }
     },
     {
-      id: 'ammo.rocket.basic', name: 'Ракета', category: 'ammo', stack: 200, verified: true,
+      id: 'ammo.rocket.basic', name: 'Ракета', en: 'Rocket', category: 'ammo', stack: 200, verified: true,
       craft: { time: 1.3, bench: 3, output: 1, ingredients: [
         { id: 'gunpowder', amount: 150 },
         { id: 'explosives', amount: 10 }
       ] }
     },
     {
-      id: 'ammo.rocket.hv', name: 'Ракета (высокоскоростная)', category: 'ammo', stack: 200, verified: true,
+      id: 'ammo.rocket.hv', name: 'Ракета (высокоскоростная)', en: 'High Velocity Rocket', category: 'ammo', stack: 200, verified: true,
       craft: { time: 1.3, bench: 3, output: 1, ingredients: [
         { id: 'gunpowder', amount: 100 },
         { id: 'metalpipe', amount: 1 }
       ] }
     },
     {
-      id: 'ammo.rocket.fire', name: 'Ракета (зажигательная)', category: 'ammo', stack: 200, verified: true,
+      id: 'ammo.rocket.fire', name: 'Ракета (зажигательная)', en: 'Incendiary Rocket', category: 'ammo', stack: 200, verified: true,
       craft: { time: 1.3, bench: 3, output: 1, ingredients: [
         { id: 'gunpowder', amount: 150 },
         { id: 'lowgradefuel', amount: 75 },
@@ -362,29 +364,29 @@ var RUST_DATA = {
 
     /* ---------------- ОДЕЖДА ---------------- */
     {
-      id: 'burlap.shirt', name: 'Рубаха из мешковины', category: 'clothing', stack: 1, verified: true,
+      id: 'burlap.shirt', name: 'Рубаха из мешковины', en: 'Burlap Shirt', category: 'clothing', stack: 1, verified: true,
       craft: { time: 3.8, bench: 1, output: 1, ingredients: [ { id: 'cloth', amount: 20 } ] }
     },
     {
-      id: 'burlap.trousers', name: 'Штаны из мешковины', category: 'clothing', stack: 1, verified: true,
+      id: 'burlap.trousers', name: 'Штаны из мешковины', en: 'Burlap Trousers', category: 'clothing', stack: 1, verified: true,
       craft: { time: 3.8, bench: 1, output: 1, ingredients: [ { id: 'cloth', amount: 20 } ] }
     },
     {
-      id: 'hoodie', name: 'Худи', category: 'clothing', stack: 1, verified: true,
+      id: 'hoodie', name: 'Худи', en: 'Hoodie', category: 'clothing', stack: 1, verified: true,
       craft: { time: 12.5, bench: 1, output: 1, ingredients: [
         { id: 'cloth', amount: 40 },
         { id: 'sewingkit', amount: 1 }
       ] }
     },
     {
-      id: 'shoes.boots', name: 'Ботинки', category: 'clothing', stack: 1, verified: true,
+      id: 'shoes.boots', name: 'Ботинки', en: 'Boots', category: 'clothing', stack: 1, verified: true,
       craft: { time: 6.3, bench: 1, output: 1, ingredients: [
         { id: 'metal.fragments', amount: 15 },
         { id: 'sewingkit', amount: 1 }
       ] }
     },
     {
-      id: 'roadsign.jacket', name: 'Куртка из дорожных знаков', category: 'clothing', stack: 1, verified: true,
+      id: 'roadsign.jacket', name: 'Куртка из дорожных знаков', en: 'Road Sign Jacket', category: 'clothing', stack: 1, verified: true,
       craft: { time: 12.5, bench: 2, output: 1, ingredients: [
         { id: 'roadsigns', amount: 10 },
         { id: 'cloth', amount: 20 },
@@ -392,7 +394,7 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'roadsign.kilt', name: 'Юбка из дорожных знаков', category: 'clothing', stack: 1, verified: true,
+      id: 'roadsign.kilt', name: 'Юбка из дорожных знаков', en: 'Road Sign Kilt', category: 'clothing', stack: 1, verified: true,
       craft: { time: 12.5, bench: 2, output: 1, ingredients: [
         { id: 'roadsigns', amount: 8 },
         { id: 'cloth', amount: 10 },
@@ -400,7 +402,7 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'metal.facemask', name: 'Металлическая маска', category: 'clothing', stack: 1, verified: true,
+      id: 'metal.facemask', name: 'Металлическая маска', en: 'Metal Facemask', category: 'clothing', stack: 1, verified: true,
       craft: { time: 35, bench: 3, output: 1, ingredients: [
         { id: 'metal.refined', amount: 15 },
         { id: 'leather', amount: 50 },
@@ -408,7 +410,7 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'metal.plate.torso', name: 'Металлический нагрудник', category: 'clothing', stack: 1, verified: true,
+      id: 'metal.plate.torso', name: 'Металлический нагрудник', en: 'Metal Chest Plate', category: 'clothing', stack: 1, verified: true,
       craft: { time: 35, bench: 3, output: 1, ingredients: [
         { id: 'metal.refined', amount: 18 },
         { id: 'leather', amount: 50 },
@@ -416,7 +418,7 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'coffeecan.helmet', name: 'Шлем из кофейной банки', category: 'clothing', stack: 1, verified: true,
+      id: 'coffeecan.helmet', name: 'Шлем из кофейной банки', en: 'Coffee Can Helmet', category: 'clothing', stack: 1, verified: true,
       craft: { time: 12.5, bench: 1, output: 1, ingredients: [
         { id: 'metal.fragments', amount: 60 },
         { id: 'cloth', amount: 15 },
@@ -424,14 +426,14 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'riot.helmet', name: 'Шлем ОМОНа', category: 'clothing', stack: 1, verified: true,
+      id: 'riot.helmet', name: 'Шлем ОМОНа', en: 'Riot Helmet', category: 'clothing', stack: 1, verified: true,
       craft: { time: 3.8, bench: 1, output: 1, ingredients: [
         { id: 'metal.fragments', amount: 50 },
         { id: 'cloth', amount: 10 }
       ] }
     },
     {
-      id: 'hazmatsuit', name: 'Хазмат-костюм', category: 'clothing', stack: 10, verified: true,
+      id: 'hazmatsuit', name: 'Хазмат-костюм', en: 'Hazmat Suit', category: 'clothing', stack: 10, verified: true,
       craft: { time: 10, bench: 2, output: 1, ingredients: [
         { id: 'metal.refined', amount: 8 },
         { id: 'tarp', amount: 5 },
@@ -441,13 +443,13 @@ var RUST_DATA = {
 
     /* ---------------- ИНСТРУМЕНТЫ ---------------- */
     {
-      id: 'rock', name: 'Камень', category: 'tools', stack: 1, verified: true,
+      id: 'rock', name: 'Камень', en: 'Rock', category: 'tools', stack: 1, verified: true,
       craft: { time: 1.3, bench: 0, output: 1, ingredients: [
         { id: 'stones', amount: 10 }
       ] }
     },
     {
-      id: 'torch', name: 'Факел', category: 'tools', stack: 1, verified: true,
+      id: 'torch', name: 'Факел', en: 'Torch', category: 'tools', stack: 1, verified: true,
       craft: { time: 3.8, bench: 0, output: 1, ingredients: [
         { id: 'wood', amount: 30 },
         { id: 'cloth', amount: 1 },
@@ -455,48 +457,48 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'hammer', name: 'Молоток', category: 'tools', stack: 1, verified: true,
+      id: 'hammer', name: 'Молоток', en: 'Hammer', category: 'tools', stack: 1, verified: true,
       craft: { time: 3.8, bench: 0, output: 1, ingredients: [
         { id: 'wood', amount: 100 }
       ] }
     },
     {
-      id: 'hatchet', name: 'Топор', category: 'tools', stack: 1, verified: true,
+      id: 'hatchet', name: 'Топор', en: 'Hatchet', category: 'tools', stack: 1, verified: true,
       craft: { time: 2.5, bench: 0, output: 1, ingredients: [
         { id: 'wood', amount: 100 },
         { id: 'metal.fragments', amount: 75 }
       ] }
     },
     {
-      id: 'pickaxe', name: 'Кирка', category: 'tools', stack: 1, verified: true,
+      id: 'pickaxe', name: 'Кирка', en: 'Pickaxe', category: 'tools', stack: 1, verified: true,
       craft: { time: 3.8, bench: 0, output: 1, ingredients: [
         { id: 'wood', amount: 100 },
         { id: 'metal.fragments', amount: 125 }
       ] }
     },
     {
-      id: 'axe.salvaged', name: 'Самодельный топор', category: 'tools', stack: 1, verified: true,
+      id: 'axe.salvaged', name: 'Самодельный топор', en: 'Salvaged Axe', category: 'tools', stack: 1, verified: true,
       craft: { time: 12.5, bench: 1, output: 1, ingredients: [
         { id: 'metalpipe', amount: 1 },
         { id: 'metalblade', amount: 5 }
       ] }
     },
     {
-      id: 'pickaxe.salvaged', name: 'Самодельная кирка', category: 'tools', stack: 1, verified: true,
+      id: 'pickaxe.salvaged', name: 'Самодельная кирка', en: 'Salvaged Pickaxe', category: 'tools', stack: 1, verified: true,
       craft: { time: 12.5, bench: 1, output: 1, ingredients: [
         { id: 'metalpipe', amount: 5 },
         { id: 'metalblade', amount: 1 }
       ] }
     },
     {
-      id: 'icepick.salvaged', name: 'Самодельный ледоруб', category: 'tools', stack: 1, verified: true,
+      id: 'icepick.salvaged', name: 'Самодельный ледоруб', en: 'Salvaged Icepick', category: 'tools', stack: 1, verified: true,
       craft: { time: 12.5, bench: 1, output: 1, ingredients: [
         { id: 'metalpipe', amount: 5 },
         { id: 'metalblade', amount: 1 }
       ] }
     },
     {
-      id: 'jackhammer', name: 'Отбойный молоток', category: 'tools', stack: 1, verified: false,
+      id: 'jackhammer', name: 'Отбойный молоток', en: 'Jackhammer', category: 'tools', stack: 1, verified: false,
       // В таблице Amigos рецепта нет — рецепт ниже не из неё.
       craft: { output: 1, ingredients: [
         { id: 'metal.refined', amount: 30 },
@@ -507,38 +509,38 @@ var RUST_DATA = {
 
     /* ---------------- СТРОИТЕЛЬСТВО ---------------- */
     {
-      id: 'cupboard.tool', name: 'Шкаф с инструментами', category: 'construction', stack: 5, verified: true,
+      id: 'cupboard.tool', name: 'Шкаф с инструментами', en: 'Tool Cupboard', category: 'construction', stack: 5, verified: true,
       craft: { time: 7.5, bench: 1, output: 1, ingredients: [ { id: 'wood', amount: 1000 } ] }
     },
     {
-      id: 'door.hinged.wood', name: 'Деревянная дверь', category: 'construction', stack: 10, verified: true,
+      id: 'door.hinged.wood', name: 'Деревянная дверь', en: 'Wooden Door', category: 'construction', stack: 10, verified: true,
       craft: { time: 3.8, bench: 1, output: 1, ingredients: [
         { id: 'wood', amount: 300 }
       ] }
     },
     {
-      id: 'door.hinged.metal', name: 'Металлическая дверь', category: 'construction', stack: 10, verified: true,
+      id: 'door.hinged.metal', name: 'Металлическая дверь', en: 'Sheet Metal Door', category: 'construction', stack: 10, verified: true,
       craft: { time: 3.8, bench: 1, output: 1, ingredients: [
         { id: 'metal.fragments', amount: 150 }
       ] }
     },
     {
-      id: 'door.hinged.toptier', name: 'Бронированная дверь', category: 'construction', stack: 10, verified: true,
+      id: 'door.hinged.toptier', name: 'Бронированная дверь', en: 'Armored Door', category: 'construction', stack: 10, verified: true,
       craft: { time: 30, bench: 3, output: 1, ingredients: [
         { id: 'metal.refined', amount: 20 },
         { id: 'gears', amount: 5 }
       ] }
     },
     {
-      id: 'lock.code', name: 'Кодовый замок', category: 'construction', stack: 50, verified: true,
+      id: 'lock.code', name: 'Кодовый замок', en: 'Code Lock', category: 'construction', stack: 50, verified: true,
       craft: { time: 3.8, bench: 1, output: 1, ingredients: [ { id: 'metal.fragments', amount: 100 } ] }
     },
     {
-      id: 'lock.key', name: 'Ключевой замок', category: 'construction', stack: 50, verified: true,
+      id: 'lock.key', name: 'Ключевой замок', en: 'Key Lock', category: 'construction', stack: 50, verified: true,
       craft: { time: 3.8, bench: 1, output: 1, ingredients: [ { id: 'wood', amount: 75 } ] }
     },
     {
-      id: 'furnace', name: 'Печь', category: 'construction', stack: 1, verified: false,
+      id: 'furnace', name: 'Печь', en: 'Furnace', category: 'construction', stack: 1, verified: false,
       // В таблице Amigos рецепта нет — рецепт оставлен прежним.
       craft: { output: 1, ingredients: [
         { id: 'stones', amount: 200 },
@@ -547,7 +549,7 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'furnace.large', name: 'Большая печь', category: 'construction', stack: 1, verified: false,
+      id: 'furnace.large', name: 'Большая печь', en: 'Large Furnace', category: 'construction', stack: 1, verified: false,
       craft: { output: 1, ingredients: [
         { id: 'stones', amount: 500 },
         { id: 'wood', amount: 100 },
@@ -555,7 +557,7 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'bbq', name: 'Гриль', category: 'construction', stack: 1, verified: false,
+      id: 'bbq', name: 'Гриль', en: 'Barbecue', category: 'construction', stack: 1, verified: false,
       craft: { output: 1, ingredients: [
         { id: 'wood', amount: 100 },
         { id: 'stones', amount: 50 },
@@ -563,14 +565,14 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'workbench1', name: 'Верстак 1 уровня', category: 'construction', stack: 1, verified: true,
+      id: 'workbench1', name: 'Верстак 1 уровня', en: 'Workbench Level 1', category: 'construction', stack: 1, verified: true,
       craft: { time: 3.8, bench: 0, output: 1, ingredients: [
         { id: 'wood', amount: 500 },
         { id: 'metal.fragments', amount: 100 }
       ] }
     },
     {
-      id: 'workbench2', name: 'Верстак 2 уровня', category: 'construction', stack: 1, verified: true,
+      id: 'workbench2', name: 'Верстак 2 уровня', en: 'Workbench Level 2', category: 'construction', stack: 1, verified: true,
       craft: { time: 3.8, bench: 1, output: 1, ingredients: [
         { id: 'metal.fragments', amount: 500 },
         { id: 'metal.refined', amount: 20 },
@@ -578,7 +580,7 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'workbench3', name: 'Верстак 3 уровня', category: 'construction', stack: 1, verified: true,
+      id: 'workbench3', name: 'Верстак 3 уровня', en: 'Workbench Level 3', category: 'construction', stack: 1, verified: true,
       craft: { time: 3.8, bench: 2, output: 1, ingredients: [
         { id: 'metal.fragments', amount: 1000 },
         { id: 'metal.refined', amount: 100 },
@@ -586,39 +588,39 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'box.wooden', name: 'Деревянный ящик', category: 'construction', stack: 10, verified: true,
+      id: 'box.wooden', name: 'Деревянный ящик', en: 'Wooden Storage Box', category: 'construction', stack: 10, verified: true,
       craft: { time: 3.8, bench: 0, output: 1, ingredients: [ { id: 'wood', amount: 100 } ] }
     },
     {
-      id: 'stash.small', name: 'Тайник', category: 'construction', stack: 5, verified: true,
+      id: 'stash.small', name: 'Тайник', en: 'Small Stash', category: 'construction', stack: 5, verified: true,
       craft: { time: 3.8, bench: 0, output: 1, ingredients: [ { id: 'cloth', amount: 10 } ] }
     },
 
     /* ---------------- РЕСУРСЫ (сырьё) ---------------- */
-    { id: 'wood', name: 'Дерево', category: 'resources', stack: 500000, basePrice: 2, verified: true },
-    { id: 'stones', name: 'Камень', category: 'resources', stack: 500000, basePrice: 2, verified: true },
-    { id: 'metal.fragments', name: 'Металлические фрагменты', category: 'resources', stack: 500000, basePrice: 4, verified: true },
-    { id: 'sulfur', name: 'Сера', category: 'resources', stack: 500000, basePrice: 6, verified: true },
-    { id: 'charcoal', name: 'Уголь', category: 'resources', stack: 500000, basePrice: 2, verified: true },
-    { id: 'metal.refined', name: 'Металл высокого качества (МВК)', category: 'resources', stack: 100000, basePrice: 60, verified: true },
-    { id: 'cloth', name: 'Ткань', category: 'resources', stack: 100000, basePrice: 3, verified: true },
-    { id: 'leather', name: 'Кожа', category: 'resources', stack: 100000, basePrice: 4, verified: true },
-    { id: 'lowgradefuel', name: 'Низкосортное топливо', category: 'resources', stack: 100000, basePrice: 3, verified: true },
-    { id: 'crude.oil', name: 'Сырая нефть', category: 'resources', stack: 100000, basePrice: 4, verified: true },
-    { id: 'animal.fat', name: 'Животный жир', category: 'resources', stack: 100000, basePrice: 4, verified: true },
-    { id: 'bone.fragments', name: 'Кости', category: 'resources', stack: 5000, basePrice: 2, verified: true },
-    { id: 'scrap', name: 'Металлолом (scrap)', category: 'resources', stack: 100000, basePrice: 0.0001, verified: true },
+    { id: 'wood', name: 'Дерево', en: 'Wood', category: 'resources', stack: 500000, basePrice: 2, verified: true },
+    { id: 'stones', name: 'Камень', en: 'Stones', category: 'resources', stack: 500000, basePrice: 2, verified: true },
+    { id: 'metal.fragments', name: 'Металлические фрагменты', en: 'Metal Fragments', category: 'resources', stack: 500000, basePrice: 4, verified: true },
+    { id: 'sulfur', name: 'Сера', en: 'Sulfur', category: 'resources', stack: 500000, basePrice: 6, verified: true },
+    { id: 'charcoal', name: 'Уголь', en: 'Charcoal', category: 'resources', stack: 500000, basePrice: 2, verified: true },
+    { id: 'metal.refined', name: 'Металл высокого качества (МВК)', en: 'High Quality Metal', category: 'resources', stack: 100000, basePrice: 60, verified: true },
+    { id: 'cloth', name: 'Ткань', en: 'Cloth', category: 'resources', stack: 100000, basePrice: 3, verified: true },
+    { id: 'leather', name: 'Кожа', en: 'Leather', category: 'resources', stack: 100000, basePrice: 4, verified: true },
+    { id: 'lowgradefuel', name: 'Низкосортное топливо', en: 'Low Grade Fuel', category: 'resources', stack: 100000, basePrice: 3, verified: true },
+    { id: 'crude.oil', name: 'Сырая нефть', en: 'Crude Oil', category: 'resources', stack: 100000, basePrice: 4, verified: true },
+    { id: 'animal.fat', name: 'Животный жир', en: 'Animal Fat', category: 'resources', stack: 100000, basePrice: 4, verified: true },
+    { id: 'bone.fragments', name: 'Кости', en: 'Bone Fragments', category: 'resources', stack: 5000, basePrice: 2, verified: true },
+    { id: 'scrap', name: 'Металлолом (scrap)', en: 'Scrap', category: 'resources', stack: 100000, basePrice: 0.0001, verified: true },
 
     /* ---------------- КОМПОНЕНТЫ ---------------- */
     {
-      id: 'gunpowder', name: 'Порох', category: 'components', stack: 100000, verified: true,
+      id: 'gunpowder', name: 'Порох', en: 'Gunpowder', category: 'components', stack: 100000, verified: true,
       craft: { time: 0.5, bench: 0, output: 10, ingredients: [
         { id: 'sulfur', amount: 20 },
         { id: 'charcoal', amount: 30 }
       ] }
     },
     {
-      id: 'explosives', name: 'Взрывчатка', category: 'components', stack: 100000, verified: true,
+      id: 'explosives', name: 'Взрывчатка', en: 'Explosives', category: 'components', stack: 100000, verified: true,
       craft: { time: 5, bench: 0, output: 1, ingredients: [
         { id: 'gunpowder', amount: 50 },
         { id: 'lowgradefuel', amount: 3 },
@@ -626,39 +628,39 @@ var RUST_DATA = {
         { id: 'metal.fragments', amount: 10 }
       ] }
     },
-    { id: 'metalpipe', name: 'Металлическая труба', category: 'components', stack: 50, basePrice: 5, verified: true },
-    { id: 'gears', name: 'Шестерёнки', category: 'components', stack: 50, basePrice: 6, verified: true },
-    { id: 'metalspring', name: 'Металлическая пружина', category: 'components', stack: 50, basePrice: 6, verified: true },
-    { id: 'sheetmetal', name: 'Листовой металл', category: 'components', stack: 50, basePrice: 12, verified: true },
-    { id: 'roadsigns', name: 'Дорожные знаки', category: 'components', stack: 50, basePrice: 4, verified: true },
-    { id: 'tarp', name: 'Брезент', category: 'components', stack: 50, basePrice: 6, verified: true },
-    { id: 'rope', name: 'Верёвка', category: 'components', stack: 50, basePrice: 4, verified: true },
-    { id: 'sewingkit', name: 'Швейный набор', category: 'components', stack: 50, basePrice: 12, verified: true },
-    { id: 'riflebody', name: 'Корпус винтовки', category: 'components', stack: 50, basePrice: 90, verified: true },
-    { id: 'smgbody', name: 'Корпус пистолета-пулемёта', category: 'components', stack: 50, basePrice: 45, verified: true },
-    { id: 'semibody', name: 'Корпус полуавтоматического оружия', category: 'components', stack: 50, basePrice: 30, verified: true },
-    { id: 'techparts', name: 'Технические детали', category: 'components', stack: 50, basePrice: 120, verified: true },
-    { id: 'metalblade', name: 'Металлическое лезвие', category: 'components', stack: 50, basePrice: 10, verified: true },
-    { id: 'propane.1lb', name: 'Пропановый баллон', category: 'components', stack: 50, basePrice: 8, verified: false },
-    { id: 'glue', name: 'Клей', category: 'components', stack: 5000, basePrice: 3, verified: true },
-    { id: 'ducttape', name: 'Скотч', category: 'components', stack: 5000, basePrice: 4, verified: true },
+    { id: 'metalpipe', name: 'Металлическая труба', en: 'Metal Pipe', category: 'components', stack: 50, basePrice: 5, verified: true },
+    { id: 'gears', name: 'Шестерёнки', en: 'Gears', category: 'components', stack: 50, basePrice: 6, verified: true },
+    { id: 'metalspring', name: 'Металлическая пружина', en: 'Metal Spring', category: 'components', stack: 50, basePrice: 6, verified: true },
+    { id: 'sheetmetal', name: 'Листовой металл', en: 'Sheet Metal', category: 'components', stack: 50, basePrice: 12, verified: true },
+    { id: 'roadsigns', name: 'Дорожные знаки', en: 'Road Signs', category: 'components', stack: 50, basePrice: 4, verified: true },
+    { id: 'tarp', name: 'Брезент', en: 'Tarp', category: 'components', stack: 50, basePrice: 6, verified: true },
+    { id: 'rope', name: 'Верёвка', en: 'Rope', category: 'components', stack: 50, basePrice: 4, verified: true },
+    { id: 'sewingkit', name: 'Швейный набор', en: 'Sewing Kit', category: 'components', stack: 50, basePrice: 12, verified: true },
+    { id: 'riflebody', name: 'Корпус винтовки', en: 'Rifle Body', category: 'components', stack: 50, basePrice: 90, verified: true },
+    { id: 'smgbody', name: 'Корпус пистолета-пулемёта', en: 'SMG Body', category: 'components', stack: 50, basePrice: 45, verified: true },
+    { id: 'semibody', name: 'Корпус полуавтоматического оружия', en: 'Semi-Automatic Body', category: 'components', stack: 50, basePrice: 30, verified: true },
+    { id: 'techparts', name: 'Технические детали', en: 'Tech Trash', category: 'components', stack: 50, basePrice: 120, verified: true },
+    { id: 'metalblade', name: 'Металлическое лезвие', en: 'Metal Blade', category: 'components', stack: 50, basePrice: 10, verified: true },
+    { id: 'propane.1lb', name: 'Пропановый баллон', en: 'Propane Tank', category: 'components', stack: 50, basePrice: 8, verified: false },
+    { id: 'glue', name: 'Клей', en: 'Glue', category: 'components', stack: 5000, basePrice: 3, verified: true },
+    { id: 'ducttape', name: 'Скотч', en: 'Duct Tape', category: 'components', stack: 5000, basePrice: 4, verified: true },
 
     /* ---------------- ЕДА ---------------- */
-    { id: 'corn', name: 'Кукуруза', category: 'food', stack: 2000, basePrice: 3, verified: true },
-    { id: 'pumpkin', name: 'Тыква', category: 'food', stack: 2000, basePrice: 2, verified: true },
-    { id: 'mushroom', name: 'Гриб', category: 'food', stack: 2000, basePrice: 4, verified: true },
-    { id: 'apple', name: 'Яблоко', category: 'food', stack: 2000, basePrice: 2, verified: true },
-    { id: 'black.raspberries', name: 'Чёрная малина', category: 'food', stack: 2000, basePrice: 3, verified: true },
-    { id: 'can.beans', name: 'Банка фасоли', category: 'food', stack: 10, basePrice: 8, verified: true },
-    { id: 'can.tuna', name: 'Банка тунца', category: 'food', stack: 10, basePrice: 10, verified: true },
+    { id: 'corn', name: 'Кукуруза', en: 'Corn', category: 'food', stack: 2000, basePrice: 3, verified: true },
+    { id: 'pumpkin', name: 'Тыква', en: 'Pumpkin', category: 'food', stack: 2000, basePrice: 2, verified: true },
+    { id: 'mushroom', name: 'Гриб', en: 'Mushroom', category: 'food', stack: 2000, basePrice: 4, verified: true },
+    { id: 'apple', name: 'Яблоко', en: 'Apple', category: 'food', stack: 2000, basePrice: 2, verified: true },
+    { id: 'black.raspberries', name: 'Чёрная малина', en: 'Black Raspberries', category: 'food', stack: 2000, basePrice: 3, verified: true },
+    { id: 'can.beans', name: 'Банка фасоли', en: 'Can of Beans', category: 'food', stack: 10, basePrice: 8, verified: true },
+    { id: 'can.tuna', name: 'Банка тунца', en: 'Can of Tuna', category: 'food', stack: 10, basePrice: 10, verified: true },
 
     /* ---------------- МЕДИЦИНА ---------------- */
     {
-      id: 'bandage', name: 'Бинт', category: 'medical', stack: 50, verified: true,
+      id: 'bandage', name: 'Бинт', en: 'Bandage', category: 'medical', stack: 50, verified: true,
       craft: { time: 5, bench: 1, output: 1, ingredients: [ { id: 'cloth', amount: 10 } ] }
     },
     {
-      id: 'medkit', name: 'Аптечка', category: 'medical', stack: 50, verified: false,
+      id: 'medkit', name: 'Аптечка', en: 'Medkit', category: 'medical', stack: 50, verified: false,
       // В таблице Amigos есть только большая аптечка — рецепт оставлен прежним.
       craft: { output: 1, ingredients: [
         { id: 'cloth', amount: 20 },
@@ -666,14 +668,14 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'largemedkit', name: 'Большая аптечка', category: 'medical', stack: 50, verified: true,
+      id: 'largemedkit', name: 'Большая аптечка', en: 'Large Medkit', category: 'medical', stack: 50, verified: true,
       craft: { time: 15, bench: 1, output: 1, ingredients: [
         { id: 'cloth', amount: 10 },
         { id: 'syringe.medical', amount: 2 }
       ] }
     },
     {
-      id: 'syringe.medical', name: 'Медицинский шприц', category: 'medical', stack: 50, verified: true,
+      id: 'syringe.medical', name: 'Медицинский шприц', en: 'Medical Syringe', category: 'medical', stack: 50, verified: true,
       craft: { time: 10, bench: 2, output: 1, ingredients: [
         { id: 'metal.fragments', amount: 10 },
         { id: 'cloth', amount: 10 },
@@ -682,13 +684,13 @@ var RUST_DATA = {
     },
 
     /* ---------------- ЭЛЕКТРИЧЕСТВО ---------------- */
-    { id: 'battery.small', name: 'Малая батарея', category: 'electrical', stack: 5000, basePrice: 20, verified: false },
-    { id: 'solarpanel.large', name: 'Большая солнечная панель', category: 'electrical', stack: 50, basePrice: 150, verified: false },
-    { id: 'generator.wind.scrap', name: 'Ветрогенератор', category: 'electrical', stack: 20, basePrice: 200, verified: false },
+    { id: 'battery.small', name: 'Малая батарея', en: 'Small Rechargeable Battery', category: 'electrical', stack: 5000, basePrice: 20, verified: false },
+    { id: 'solarpanel.large', name: 'Большая солнечная панель', en: 'Large Solar Panel', category: 'electrical', stack: 50, basePrice: 150, verified: false },
+    { id: 'generator.wind.scrap', name: 'Ветрогенератор', en: 'Wind Turbine', category: 'electrical', stack: 20, basePrice: 200, verified: false },
 
     /* ---------------- ВЗРЫВЧАТКА ---------------- */
     {
-      id: 'explosive.timed', name: 'Взрывной заряд C4', category: 'explosives', stack: 10, verified: false,
+      id: 'explosive.timed', name: 'Взрывной заряд C4', en: 'Timed Explosive Charge', category: 'explosives', stack: 10, verified: false,
       // В таблице Amigos рецепта C4 нет — рецепт ниже не из неё.
       craft: { output: 1, ingredients: [
         { id: 'explosives', amount: 20 },
@@ -698,7 +700,7 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'explosive.satchel', name: 'Рюкзак со взрывчаткой', category: 'explosives', stack: 100, verified: true,
+      id: 'explosive.satchel', name: 'Рюкзак со взрывчаткой', en: 'Satchel Charge', category: 'explosives', stack: 100, verified: true,
       craft: { time: 1.3, bench: 1, output: 1, ingredients: [
         { id: 'grenade.beancan', amount: 4 },
         { id: 'stash.small', amount: 1 },
@@ -706,7 +708,7 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'grenade.beancan', name: 'Граната из консервной банки', category: 'explosives', stack: 100, verified: true,
+      id: 'grenade.beancan', name: 'Граната из консервной банки', en: 'Bean Can Grenade', category: 'explosives', stack: 100, verified: true,
       craft: { time: 2.5, bench: 1, output: 1, ingredients: [
         { id: 'gunpowder', amount: 60 },
         { id: 'metal.fragments', amount: 20 },
@@ -714,14 +716,14 @@ var RUST_DATA = {
       ] }
     },
     {
-      id: 'grenade.f1', name: 'Граната F1', category: 'explosives', stack: 100, verified: true,
+      id: 'grenade.f1', name: 'Граната F1', en: 'F1 Grenade', category: 'explosives', stack: 100, verified: true,
       craft: { time: 5, bench: 1, output: 1, ingredients: [
         { id: 'metal.fragments', amount: 25 },
         { id: 'gunpowder', amount: 30 }
       ] }
     },
     {
-      id: 'grenade.flashbang', name: 'Светошумовая граната', category: 'explosives', stack: 100, verified: true,
+      id: 'grenade.flashbang', name: 'Светошумовая граната', en: 'Flashbang', category: 'explosives', stack: 100, verified: true,
       craft: { time: 5, bench: 1, output: 1, ingredients: [
         { id: 'metal.fragments', amount: 50 },
         { id: 'gunpowder', amount: 25 }
@@ -730,13 +732,13 @@ var RUST_DATA = {
 
     /* ---------------- ЛОВУШКИ ---------------- */
     {
-      id: 'trap.bear', name: 'Медвежий капкан', category: 'traps', stack: 50, verified: true,
+      id: 'trap.bear', name: 'Медвежий капкан', en: 'Bear Trap', category: 'traps', stack: 50, verified: true,
       craft: { time: 3.8, bench: 1, output: 1, ingredients: [
         { id: 'gears', amount: 1 }
       ] }
     },
     {
-      id: 'trap.landmine', name: 'Мина', category: 'traps', stack: 100, verified: true,
+      id: 'trap.landmine', name: 'Мина', en: 'Landmine', category: 'traps', stack: 100, verified: true,
       craft: { time: 10, bench: 1, output: 1, ingredients: [
         { id: 'metal.fragments', amount: 50 },
         { id: 'gunpowder', amount: 30 }
@@ -745,14 +747,14 @@ var RUST_DATA = {
 
     /* ---------------- РАЗНОЕ ---------------- */
     {
-      id: 'research.table', name: 'Стол исследований', category: 'misc', stack: 1, verified: true,
+      id: 'research.table', name: 'Стол исследований', en: 'Research Table', category: 'misc', stack: 1, verified: true,
       craft: { time: 3.8, bench: 0, output: 1, ingredients: [
         { id: 'metal.fragments', amount: 200 },
         { id: 'scrap', amount: 20 }
       ] }
     },
     {
-      id: 'repair.bench', name: 'Верстак для ремонта', category: 'misc', stack: 1, verified: true,
+      id: 'repair.bench', name: 'Верстак для ремонта', en: 'Repair Bench', category: 'misc', stack: 1, verified: true,
       craft: { time: 3.8, bench: 0, output: 1, ingredients: [
         { id: 'metal.fragments', amount: 125 }
       ] }

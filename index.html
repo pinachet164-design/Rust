@@ -180,10 +180,12 @@
         <button type="button" class="btn" id="btnExport">Сохранить таблицу</button>
         <button type="button" class="btn" id="btnImport">Загрузить таблицу</button>
         <button type="button" class="btn btn--danger" id="btnReset">Сбросить всё</button>
-        <input type="file" id="importFile" accept="application/json,.json" hidden>
+        <input type="file" id="importFile" accept="application/json,.json,.xlsx" hidden>
       </div>
 
-      <p class="hint">«Сохранить таблицу» — файл rust-economy.json со всей таблицей: названия, категории, базовые цены, рецепты и разборка, плюс настройки и ручные цены. «Загрузить таблицу» возвращает такую же выгрузку обратно в сайт, поэтому дальше таблицу можно вести только здесь. CSV — только для чтения в Excel, обратно он не загружается.</p>
+      <div class="hint import-report" id="importReport" hidden></div>
+
+      <p class="hint">«Сохранить таблицу» — файл rust-economy.json со всей таблицей: названия, категории, базовые цены, рецепты и разборка, плюс настройки и ручные цены. «Загрузить таблицу» принимает эту же выгрузку (JSON) или файл Excel «Amigos экономика» (.xlsx): из него берутся стаки, время крафта, выход за крафт и рецепты — только для предметов, которые есть в справочнике. CSV — только для чтения в Excel, обратно он не загружается.</p>
       <p class="hint">Настройки, загруженная таблица и ручные цены сохраняются в localStorage этого браузера.</p>
     </div>
   </section>

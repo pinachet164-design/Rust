@@ -884,6 +884,30 @@ button, input, select {
   font-size: 0.82rem;
 }
 
+.import-report {
+  white-space: normal;
+}
+
+.import-report details {
+  margin-top: 6px;
+}
+
+.import-report summary {
+  cursor: pointer;
+  color: var(--text, #e7e2d6);
+}
+
+.import-report ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  max-height: 180px;
+  overflow: auto;
+}
+
+.import-report li {
+  margin: 2px 0;
+}
+
 .drawer-actions {
   display: flex;
   flex-wrap: wrap;

@@ -49,7 +49,7 @@
   var categoriesById = {};
   DATA.categories.forEach(function (c) { categoriesById[c.id] = c; });
 
-  var KNOWN_FIELDS = ['id', 'name', 'category', 'stack', 'basePrice', 'craft', 'recycle', 'verified'];
+  var KNOWN_FIELDS = ['id', 'name', 'en', 'category', 'stack', 'basePrice', 'craft', 'recycle', 'verified'];
 
   function normalizeItems(input) {
     if (!Array.isArray(input)) { throw new Error('items'); }
@@ -65,6 +65,7 @@
         name: String(raw.name || id),
         category: categoriesById[raw.category] ? raw.category : 'misc'
       };
+      if (raw.en) { item.en = String(raw.en); }
       if (isFinite(raw.stack) && Number(raw.stack) > 0) {
         item.stack = Number(raw.stack);
       }
@@ -979,6 +980,405 @@
     reader.readAsText(file);
   }
 
+  /* =====================  Импорт таблицы Excel (.xlsx)  ===================== */
+
+  // Колонки ресурсов в таблице Amigos → id ресурса в наших данных.
+  var XLSX_COLUMNS = {
+    'дерево': 'wood',
+    'камень': 'stones',
+    'фрагменты металла': 'metal.fragments',
+    'мвк': 'metal.refined',
+    'металл высокого качества': 'metal.refined',
+    'сера': 'sulfur',
+    'уголь': 'charcoal',
+    'порох': 'gunpowder',
+    'ткань': 'cloth',
+    'тнк': 'lowgradefuel',
+    'низкосортное топливо': 'lowgradefuel',
+    'кожа': 'leather',
+    'обломки костей': 'bone.fragments',
+    'кости': 'bone.fragments',
+    'металлолом': 'scrap',
+    'взрывчатое вещество': 'explosives',
+    'взрывчатка': 'explosives',
+    'веревка': 'rope',
+    'брезент': 'tarp',
+    'корпус полуавтомата': 'semibody',
+    'корпус винтовки': 'riflebody',
+    'корпус пистолета-пулемета': 'smgbody',
+    'корпус пистолет-пулемета': 'smgbody',
+    'шестерни': 'gears',
+    'листовой металл': 'sheetmetal',
+    'металлическая труба': 'metalpipe',
+    'металлическое лезвие': 'metalblade',
+    'металлическая пружина': 'metalspring',
+    'дорожные знаки': 'roadsigns',
+    'старые микросхемы': 'techparts',
+    'набор для шитья': 'sewingkit',
+    'медицинский шприц': 'syringe.medical',
+    'пропановый балон': 'propane.1lb',
+    'пропановый баллон': 'propane.1lb',
+    'бобовая граната': 'grenade.beancan',
+    'маленький тайник': 'stash.small',
+    'жир': 'animal.fat',
+    'животный жир': 'animal.fat'
+  };
+
+  function xlsxHeader(value) {
+    return String(value == null ? '' : value)
+      .toLowerCase()
+      .replace(/ё/g, 'е')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function xlsxNumber(value) {
+    var text = String(value == null ? '' : value).replace(/\s/g, '').replace(',', '.');
+    var n = Number(text);
+    return isFinite(n) ? n : 0;
+  }
+
+  function colIndexFromRef(ref) {
+    var letters = String(ref || '').replace(/[^A-Za-z]/g, '').toUpperCase();
+    var n = 0;
+    for (var i = 0; i < letters.length; i++) {
+      n = n * 26 + (letters.charCodeAt(i) - 64);
+    }
+    return n - 1;
+  }
+
+  // Разбор ZIP: xlsx — это zip с XML внутри.
+  function unzipBuffer(buffer) {
+    var dv = new DataView(buffer);
+    var eocd = -1;
+    var limit = Math.max(0, dv.byteLength - 22 - 65535);
+    for (var i = dv.byteLength - 22; i >= limit; i--) {
+      if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) { return Promise.reject(new Error('zip')); }
+    var count = dv.getUint16(eocd + 10, true);
+    var p = dv.getUint32(eocd + 16, true);
+    var decoder = new TextDecoder('utf-8');
+    var entries = [];
+    for (var n = 0; n < count; n++) {
+      if (p + 46 > dv.byteLength || dv.getUint32(p, true) !== 0x02014b50) { break; }
+      var nameLen = dv.getUint16(p + 28, true);
+      var extraLen = dv.getUint16(p + 30, true);
+      var commentLen = dv.getUint16(p + 32, true);
+      entries.push({
+        name: decoder.decode(new Uint8Array(buffer, p + 46, nameLen)),
+        method: dv.getUint16(p + 10, true),
+        compSize: dv.getUint32(p + 20, true),
+        localOff: dv.getUint32(p + 42, true)
+      });
+      p += 46 + nameLen + extraLen + commentLen;
+    }
+    return Promise.all(entries.map(function (entry) {
+      return readZipEntry(buffer, entry, decoder).then(function (text) {
+        return { name: entry.name, text: text };
+      });
+    }));
+  }
+
+  function readZipEntry(buffer, entry, decoder) {
+    if (!entry.compSize) { return Promise.resolve(''); }
+    var dv = new DataView(buffer);
+    var nameLen = dv.getUint16(entry.localOff + 26, true);
+    var extraLen = dv.getUint16(entry.localOff + 28, true);
+    var start = entry.localOff + 30 + nameLen + extraLen;
+    var bytes = new Uint8Array(buffer, start, entry.compSize);
+    if (entry.method === 0) { return Promise.resolve(decoder.decode(bytes)); }
+    if (entry.method === 8) {
+      if (typeof DecompressionStream === 'undefined') {
+        return Promise.reject(new Error('inflate'));
+      }
+      var stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+      return new Response(stream).text();
+    }
+    return Promise.reject(new Error('zip method'));
+  }
+
+  function parseXlsxXml(text) {
+    var doc = new DOMParser().parseFromString(text, 'application/xml');
+    if (!doc || doc.getElementsByTagName('parsererror').length) { throw new Error('xml'); }
+    return doc;
+  }
+
+  function parseSharedStrings(text) {
+    var strings = [];
+    var nodes = parseXlsxXml(text).getElementsByTagNameNS('*', 'si');
+    for (var i = 0; i < nodes.length; i++) {
+      var parts = nodes[i].getElementsByTagNameNS('*', 't');
+      var value = '';
+      for (var j = 0; j < parts.length; j++) { value += parts[j].textContent || ''; }
+      strings.push(value);
+    }
+    return strings;
+  }
+
+  function parseSheetRows(text, shared) {
+    var rows = [];
+    var rowNodes = parseXlsxXml(text).getElementsByTagNameNS('*', 'row');
+    for (var i = 0; i < rowNodes.length; i++) {
+      var cells = rowNodes[i].getElementsByTagNameNS('*', 'c');
+      var row = [];
+      for (var j = 0; j < cells.length; j++) {
+        var cell = cells[j];
+        var col = cell.getAttribute('r') ? colIndexFromRef(cell.getAttribute('r')) : row.length;
+        if (col < 0) { col = row.length; }
+        var value = '';
+        var type = cell.getAttribute('t');
+        if (type === 'inlineStr') {
+          var inline = cell.getElementsByTagNameNS('*', 't');
+          for (var k = 0; k < inline.length; k++) { value += inline[k].textContent || ''; }
+        } else {
+          var v = cell.getElementsByTagNameNS('*', 'v')[0];
+          var raw = v ? (v.textContent || '') : '';
+          value = type === 's' ? (shared[Number(raw)] || '') : raw;
+        }
+        row[col] = value;
+      }
+      rows.push(row);
+    }
+    return rows;
+  }
+
+  // Строки листа → записи {en, name, stack, time, output, ingredients}.
+  function xlsxRowsToEntries(rows) {
+    var entries = [];
+    var header = null;
+    rows.forEach(function (row) {
+      var timeCol = -1;
+      for (var i = 0; i < row.length; i++) {
+        if (xlsxHeader(row[i]) === 'время крафта') { timeCol = i; break; }
+      }
+      if (timeCol > 0) {
+        header = { stack: -1, time: timeCol, output: -1, ingredients: [], unknown: [] };
+        for (var j = 0; j < row.length; j++) {
+          var key = xlsxHeader(row[j]);
+          if (!key) { continue; }
+          if (key === 'стаки') { header.stack = j; }
+          else if (key === 'кол-во за крафт') { header.output = j; }
+          else if (XLSX_COLUMNS[key]) { header.ingredients.push({ col: j, id: XLSX_COLUMNS[key] }); }
+          else if (j > timeCol) { header.unknown.push({ col: j, title: String(row[j]) }); }
+        }
+        return;
+      }
+      if (!header) { return; }
+      var enMatch = /^"([^"]+)"/.exec(String(row[0] == null ? '' : row[0]));
+      // Название ищем в самой строке: слева от времени крафта бывают пустая
+      // колонка «цена» или служебные числа, а заголовок колонки может быть пустым.
+      var nameCol = -1;
+      for (var c = header.time - 1; c >= 0; c--) {
+        var cellText = String(row[c] == null ? '' : row[c]).trim();
+        if (!cellText) { continue; }
+        if (cellText.charAt(0) === '"') { continue; }
+        if (!isNaN(Number(cellText.replace(',', '.')))) { continue; }
+        nameCol = c;
+        break;
+      }
+      if (nameCol < 0) { return; }
+      var name = String(row[nameCol]).trim();
+      var output = header.output >= 0 ? xlsxNumber(row[header.output]) : 0;
+      var stack = header.stack >= 0 ? xlsxNumber(row[header.stack]) : xlsxNumber(row[nameCol - 1]);
+      if (!output && !stack) { return; }
+      var ingredients = [];
+      header.ingredients.forEach(function (field) {
+        var amount = xlsxNumber(row[field.col]);
+        if (amount > 0) { ingredients.push({ id: field.id, amount: amount }); }
+      });
+      var unknown = [];
+      header.unknown.forEach(function (field) {
+        var amount = xlsxNumber(row[field.col]);
+        if (amount > 0) { unknown.push({ title: field.title, amount: amount }); }
+      });
+      entries.push({
+        name: name,
+        en: enMatch ? enMatch[1] : '',
+        stack: stack,
+        time: xlsxNumber(row[header.time]),
+        output: output,
+        ingredients: ingredients,
+        unknown: unknown
+      });
+    });
+    return entries;
+  }
+
+  function importNameKey(value) {
+    return String(value == null ? '' : value)
+      .toLowerCase()
+      .replace(/ё/g, 'е')
+      .replace(/(\d)[.,](\d)/g, '$1$2')
+      .replace(/[^a-zа-я0-9]+/g, ' ')
+      .trim();
+  }
+
+  function importStem(word) {
+    return word.replace(/(ями|ами|ов|ев|ей|ий|ый|ая|ое|ые|ие|ую|ам|ям|ах|ях|ом|ем|ой|ка|ки|ок|ек|а|о|ы|и|е|у|ю|я|ь)$/, '');
+  }
+
+  function importTokens(value) {
+    return importNameKey(value).split(' ').filter(Boolean).map(importStem);
+  }
+
+  function tokenScore(a, b) {
+    if (!a.length || !b.length) { return 0; }
+    var left = a.slice();
+    var hit = 0;
+    b.forEach(function (word) {
+      var at = left.indexOf(word);
+      if (at !== -1) { hit++; left.splice(at, 1); }
+    });
+    return (2 * hit) / (a.length + b.length);
+  }
+
+  // Поиск предмета для строки: английское имя → русское имя → похожее имя.
+  function matchImportEntry(entry) {
+    if (entry.en) {
+      var byEn = null;
+      items.forEach(function (item) {
+        if (!byEn && item.en && importNameKey(item.en) === importNameKey(entry.en)) { byEn = item; }
+      });
+      if (byEn) { return byEn; }
+    }
+    var key = importNameKey(entry.name);
+    var byName = null;
+    items.forEach(function (item) {
+      if (!byName && importNameKey(item.name) === key) { byName = item; }
+    });
+    if (byName) { return byName; }
+    var target = importTokens(entry.name);
+    var best = null;
+    var bestScore = 0;
+    var secondScore = 0;
+    items.forEach(function (item) {
+      var score = tokenScore(importTokens(item.name), target);
+      if (score > bestScore) { secondScore = bestScore; bestScore = score; best = item; }
+      else if (score > secondScore) { secondScore = score; }
+    });
+    if (best && bestScore >= 0.8 && bestScore - secondScore >= 0.05) { return best; }
+    return null;
+  }
+
+  function xlsxReport(matched, notFound, skipped, rowsTotal) {
+    var box = document.getElementById('importReport');
+    if (!box) { return; }
+    box.hidden = false;
+    var html = '<strong>Импорт Excel:</strong> строк ' + rowsTotal +
+      ', обновлено предметов ' + matched.length +
+      ', не найдено ' + notFound.length +
+      ', пропущено ' + skipped.length + '.';
+    if (notFound.length) {
+      html += '<details><summary>Не найдено в справочнике (' + notFound.length + ')</summary><ul>';
+      notFound.slice(0, 80).forEach(function (name) {
+        html += '<li>' + escapeHtml(name) + '</li>';
+      });
+      html += '</ul></details>';
+    }
+    if (skipped.length) {
+      html += '<details><summary>Пропущено (' + skipped.length + ')</summary><ul>';
+      skipped.slice(0, 80).forEach(function (text) {
+        html += '<li>' + escapeHtml(text) + '</li>';
+      });
+      html += '</ul></details>';
+    }
+    box.innerHTML = html;
+  }
+
+  function importXlsx(file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      unzipBuffer(reader.result).then(function (files) {
+        var byName = {};
+        files.forEach(function (file2) { byName[file2.name] = file2.text; });
+        var shared = byName['xl/sharedStrings.xml'] ? parseSharedStrings(byName['xl/sharedStrings.xml']) : [];
+        var sheets = Object.keys(byName).filter(function (name) {
+          return /^xl\/worksheets\/sheet\d+\.xml$/.test(name);
+        });
+        if (!sheets.length) { throw new Error('sheet'); }
+
+        var entries = [];
+        sheets.forEach(function (name) {
+          xlsxRowsToEntries(parseSheetRows(byName[name], shared)).forEach(function (entry) {
+            entries.push(entry);
+          });
+        });
+        if (!entries.length) {
+          toast('В файле не найдено колонки «время крафта»');
+          return;
+        }
+        entries = entries.map(function (entry) {
+          var item = matchImportEntry(entry);
+          return { entry: entry, id: item ? item.id : null };
+        });
+        var updates = {};
+        entries.forEach(function (pair) {
+          if (pair.id) { updates[pair.id] = pair.entry; }
+        });
+        var ids = Object.keys(updates);
+        if (!ids.length) {
+          toast('Не нашёл ни одного знакомого предмета');
+          xlsxReport([], entries.map(function (pair) { return pair.entry.name; }), [], entries.length);
+          return;
+        }
+        if (!window.confirm('Найдено строк: ' + entries.length + '. Совпало предметов: ' + ids.length +
+          '. Обновить рецепты, время крафта и стаки из файла?')) { return; }
+
+        // Клонируем таблицу, чтобы не менять базовую из js/data.js.
+        var next = JSON.parse(JSON.stringify(items));
+        var nextById = {};
+        next.forEach(function (item) { nextById[item.id] = item; });
+        var applied = [];
+        var skipped = [];
+        ids.forEach(function (id) {
+          var entry = updates[id];
+          var item = nextById[id];
+          if (!item) { return; }
+          if (entry.stack > 0) { item.stack = entry.stack; }
+          if (entry.output > 0) {
+            if (entry.unknown.length) {
+              skipped.push(entry.name + ' — неизвестный ресурс: ' +
+                entry.unknown.map(function (u) { return u.title + ' ' + u.amount; }).join(', '));
+              return;
+            }
+            var bench = item.craft && item.craft.bench != null ? item.craft.bench : null;
+            var prevTime = item.craft && item.craft.time != null ? item.craft.time : 0;
+            item.craft = {
+              time: entry.time > 0 ? entry.time : prevTime,
+              output: entry.output,
+              ingredients: entry.ingredients.map(function (ing) {
+                return { id: ing.id, amount: ing.amount };
+              })
+            };
+            if (bench != null) { item.craft.bench = bench; }
+            applied.push(entry.name);
+          }
+        });
+        setItems(next);
+        clearCache();
+        syncSettingsInputs();
+        renderCategories();
+        renderAll();
+        saveState();
+        xlsxReport(applied, entries.filter(function (pair) { return !pair.id; }).map(function (pair) {
+          return pair.entry.name + (pair.entry.en ? ' — ' + pair.entry.en : '');
+        }), skipped, entries.length);
+        toast('Из Excel обновлено: ' + applied.length + ' предметов');
+      }).catch(function (error) {
+        if (error && error.message === 'inflate') {
+          toast('Браузер не умеет распаковывать xlsx — обновите браузер');
+        } else if (error && error.message === 'sheet') {
+          toast('В файле нет листов — это точно .xlsx?');
+        } else {
+          toast('Не удалось прочитать Excel: ' + (error && error.message ? error.message : 'ошибка'));
+        }
+      });
+    };
+    reader.onerror = function () { toast('Не удалось прочитать файл'); };
+    reader.readAsArrayBuffer(file);
+  }
+
   function resetAll() {
     if (!window.confirm('Сбросить настройки и все ручные цены?')) { return; }
     state.settings = defaultSettings();
@@ -1218,7 +1618,10 @@
     });
     document.getElementById('importFile').addEventListener('change', function (e) {
       var file = e.target.files && e.target.files[0];
-      if (file) { importJson(file); }
+      if (file) {
+        if (/\.xlsx$/i.test(file.name || '')) { importXlsx(file); }
+        else { importJson(file); }
+      }
       e.target.value = '';
     });
     document.getElementById('btnReset').addEventListener('click', resetAll);
