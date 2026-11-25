@@ -10,13 +10,35 @@
 
   var STORAGE_KEY = 'rust-econ-v1';
 
+  var BUYBACK_DEFAULTS = { resources: 0.45, components: 0.55, 'default': 0.67 };
+
   var DEFAULTS = {
     rubRate: Number(DATA.settings.rubRate) || 5,
     yieldMultiplier: Number(DATA.settings.yieldMultiplier) || 1,
     yieldK: isFinite(DATA.settings.yieldK) ? Number(DATA.settings.yieldK) : 0.7,
-    markup: Number(DATA.settings.markup) || 0,
-    discount: Number(DATA.settings.discount) || 0
+    scrapPrice: Number(DATA.settings.scrapPrice) || 25,
+    markup: isFinite(DATA.settings.markup) ? Number(DATA.settings.markup) : 0.25,
+    buyback: {}
   };
+  Object.keys(BUYBACK_DEFAULTS).forEach(function (key) {
+    var raw = DATA.settings.buyback ? DATA.settings.buyback[key] : null;
+    DEFAULTS.buyback[key] = isFinite(raw) ? Number(raw) : BUYBACK_DEFAULTS[key];
+  });
+
+  function defaultSettings() {
+    return {
+      rubRate: DEFAULTS.rubRate,
+      yieldMultiplier: DEFAULTS.yieldMultiplier,
+      yieldK: DEFAULTS.yieldK,
+      scrapPrice: DEFAULTS.scrapPrice,
+      markup: DEFAULTS.markup,
+      buyback: {
+        resources: DEFAULTS.buyback.resources,
+        components: DEFAULTS.buyback.components,
+        'default': DEFAULTS.buyback['default']
+      }
+    };
+  }
 
   var byId = {};
   DATA.items.forEach(function (item) { byId[item.id] = item; });
@@ -24,13 +46,7 @@
   DATA.categories.forEach(function (c) { categoriesById[c.id] = c; });
 
   var state = {
-    settings: {
-      rubRate: DEFAULTS.rubRate,
-      yieldMultiplier: DEFAULTS.yieldMultiplier,
-      yieldK: DEFAULTS.yieldK,
-      markup: DEFAULTS.markup,
-      discount: DEFAULTS.discount
-    },
+    settings: defaultSettings(),
     overrides: {},
     category: 'weapons',
     search: '',
@@ -57,10 +73,21 @@
       : String(rounded);
   }
 
-  function money(tugriks) {
-    var rate = state.settings.rubRate > 0 ? state.settings.rubRate : 1;
-    return num(tugriks) + ' ₸ (' + num(tugriks / rate) + ' ₽)';
+  // Все расчёты идут в тугриках; рубли и скрап — только отображение.
+  function rubRate() {
+    var rate = Number(state.settings.rubRate);
+    return rate > 0 ? rate : 1;
   }
+
+  function scrapRate() {
+    var price = Number(state.settings.scrapPrice);
+    return price > 0 ? price : 1;
+  }
+
+  function fmtT(value) { return num(value) + ' ₸'; }
+  function fmtR(value) { return num(value / rubRate()) + ' ₽'; }
+  function fmtS(value) { return num(value / scrapRate()) + ' скрап'; }
+  function fmtAlt(value) { return fmtR(value) + ' · ' + fmtS(value); }
 
   function escapeHtml(text) {
     return String(text)
@@ -97,20 +124,31 @@
 
   /* =====================  Сохранение  ===================== */
 
-  function sanitizeSettings(input) {
+  function sanitizeBuyback(input) {
     var result = {
-      rubRate: DEFAULTS.rubRate,
-      yieldMultiplier: DEFAULTS.yieldMultiplier,
-      yieldK: DEFAULTS.yieldK,
-      markup: DEFAULTS.markup,
-      discount: DEFAULTS.discount
+      resources: DEFAULTS.buyback.resources,
+      components: DEFAULTS.buyback.components,
+      'default': DEFAULTS.buyback['default']
     };
+    if (input && typeof input === 'object') {
+      Object.keys(result).forEach(function (key) {
+        if (isFinite(input[key])) {
+          result[key] = clampNumber(input[key], 0, 0.95, result[key]);
+        }
+      });
+    }
+    return result;
+  }
+
+  function sanitizeSettings(input) {
+    var result = defaultSettings();
     if (!input || typeof input !== 'object') { return result; }
     if (isFinite(input.rubRate) && Number(input.rubRate) > 0) { result.rubRate = clampNumber(input.rubRate, 0.01, 100000, DEFAULTS.rubRate); }
     if (isFinite(input.yieldMultiplier) && Number(input.yieldMultiplier) > 0) { result.yieldMultiplier = clampNumber(input.yieldMultiplier, 0.1, 1000, DEFAULTS.yieldMultiplier); }
     if (isFinite(input.yieldK)) { result.yieldK = clampNumber(input.yieldK, 0, 3, DEFAULTS.yieldK); }
+    if (isFinite(input.scrapPrice) && Number(input.scrapPrice) > 0) { result.scrapPrice = clampNumber(input.scrapPrice, 0.01, 1000000, DEFAULTS.scrapPrice); }
     if (isFinite(input.markup)) { result.markup = clampNumber(input.markup, -0.9, 10, DEFAULTS.markup); }
-    if (isFinite(input.discount)) { result.discount = clampNumber(input.discount, -0.9, 0.9, DEFAULTS.discount); }
+    result.buyback = sanitizeBuyback(input.buyback);
     return result;
   }
 
@@ -211,6 +249,13 @@
     return value;
   }
 
+  // Доля себестоимости, которую администратор платит игроку при выкупе.
+  function buybackRate(categoryId) {
+    var map = state.settings.buyback || {};
+    if (map[categoryId] != null) { return Number(map[categoryId]); }
+    return map['default'] != null ? Number(map['default']) : BUYBACK_DEFAULTS['default'];
+  }
+
   function buyPrice(id) {
     var ov = state.overrides[id];
     if (ov && ov.buy != null) { return ov.buy; }
@@ -220,7 +265,8 @@
   function sellPrice(id) {
     var ov = state.overrides[id];
     if (ov && ov.sell != null) { return ov.sell; }
-    return fairPrice(id) * (1 - state.settings.discount);
+    var item = byId[id];
+    return fairPrice(id) * buybackRate(item ? item.category : 'default');
   }
 
   function recycleValue(item) {
@@ -228,7 +274,8 @@
     var sum = 0;
     item.recycle.forEach(function (out) {
       if (!byId[out.id]) { return; }
-      sum += fairPrice(out.id) * (Number(out.amount) || 0);
+      // Сколько администратор заплатит за полученные ресурсы.
+      sum += sellPrice(out.id) * (Number(out.amount) || 0);
     });
     return sum;
   }
@@ -320,7 +367,9 @@
     var html = '';
     list.forEach(function (item) {
       var badge = item.verified === false ? '<span class="tag" title="Рецепт или разборка требуют проверки">проверить</span>' : '';
+      var fair = fairPrice(item.id);
       var buy = buyPrice(item.id);
+      var sell = sellPrice(item.id);
       html += '<li class="item' + (state.openedId === item.id ? ' is-open' : '') + '" data-id="' + escapeHtml(item.id) + '">' +
         '<div class="item-main">' +
           '<div class="item-row">' +
@@ -337,8 +386,9 @@
           '</div>' +
         '</div>' +
         '<div class="item-price">' +
-          '<strong>' + num(buy) + ' ₸</strong>' +
-          '<span>' + num(buy / state.settings.rubRate) + ' ₽</span>' +
+          '<strong title="Цена продажи игроку">' + fmtT(buy) + '</strong>' +
+          '<span>' + fmtAlt(buy) + '</span>' +
+          '<span class="item-price-alt">себест. ' + fmtT(fair) + ' · выкуп ' + fmtT(sell) + '</span>' +
         '</div>' +
       '</li>';
     });
@@ -409,20 +459,22 @@
           '<span class="pshort">' + idAttr + '</span>' +
         '</th>' +
         '<td class="num">' +
-          '<span class="pfair">' + num(fair) + ' ₸</span>' +
-          '<span class="prub">' + num(fair / state.settings.rubRate) + ' ₽</span>' +
+          '<span class="pfair">' + fmtT(fair) + '</span>' +
+          '<span class="prub">' + fmtAlt(fair) + '</span>' +
         '</td>' +
         '<td class="num">' +
           '<input class="pinput' + (buyManual ? ' is-manual' : '') + '" type="number" min="0" step="1" inputmode="decimal"' +
             ' data-id="' + idAttr + '" data-field="buy"' +
             ' value="' + (buyManual ? String(Math.round(ov.buy * 100) / 100) : '') + '"' +
-            ' placeholder="' + num(buy) + '" aria-label="Покупка: ' + nameAttr + '">' +
+            ' placeholder="' + num(buy) + '" aria-label="Продажа игроку, тугрики: ' + nameAttr + '">' +
+          '<span class="palt">' + fmtAlt(buy) + '</span>' +
         '</td>' +
         '<td class="num">' +
           '<input class="pinput' + (sellManual ? ' is-manual' : '') + '" type="number" min="0" step="1" inputmode="decimal"' +
             ' data-id="' + idAttr + '" data-field="sell"' +
             ' value="' + (sellManual ? String(Math.round(ov.sell * 100) / 100) : '') + '"' +
-            ' placeholder="' + num(sell) + '" aria-label="Продажа: ' + nameAttr + '">' +
+            ' placeholder="' + num(sell) + '" aria-label="Выкуп у игрока, тугрики: ' + nameAttr + '">' +
+          '<span class="palt">' + fmtAlt(sell) + '</span>' +
         '</td>' +
         '<td class="num ' + (spread <= 0 ? 'pspread--bad' : 'pspread--ok') + '">' + spread.toFixed(0) + '%</td>' +
         '<td class="num">' + (recycle > 0 ? num(recycle) + ' ₸' : '—') + '</td>' +
@@ -501,9 +553,14 @@
 
   function exportCsv() {
     var list = visibleItems();
-    var rows = [['shortname', 'Название', 'Категория', 'Расчётная, ₸', 'Покупка, ₸', 'Продажа, ₸', 'Спред, %', 'Разборка, ₸', 'Ручная цена']];
+    var rows = [['shortname', 'Название', 'Категория',
+      'Себестоимость, ₸', 'Себестоимость, ₽', 'Себестоимость, скрап',
+      'Продажа игроку, ₸', 'Продажа игроку, ₽', 'Продажа игроку, скрап',
+      'Выкуп у игрока, ₸', 'Выкуп у игрока, ₽', 'Выкуп у игрока, скрап',
+      'Спред, %', 'Разборка, ₸', 'Ручная цена']];
     list.forEach(function (item) {
       var ov = state.overrides[item.id] || {};
+      var fair = fairPrice(item.id);
       var buy = buyPrice(item.id);
       var sell = sellPrice(item.id);
       var recycle = recycleValue(item);
@@ -511,9 +568,9 @@
         item.id,
         item.name,
         categoryName(item.category),
-        Math.round(fairPrice(item.id)),
-        Math.round(buy),
-        Math.round(sell),
+        Math.round(fair), Math.round(fair / rubRate()), Math.round(fair / scrapRate()),
+        Math.round(buy), Math.round(buy / rubRate()), Math.round(buy / scrapRate()),
+        Math.round(sell), Math.round(sell / rubRate()), Math.round(sell / scrapRate()),
         spreadPercent(buy, sell).toFixed(1),
         recycle > 0 ? Math.round(recycle) : '',
         ov.buy != null || ov.sell != null ? 'да' : ''
@@ -561,6 +618,15 @@
       }
     });
     return out;
+  }
+
+  function priceCellHtml(label, value) {
+    return '<div class="price-cell">' +
+      '<span class="label">' + label + '</span>' +
+      '<strong>' + fmtT(value) + '</strong>' +
+      '<span class="alt">' + fmtR(value) + '</span>' +
+      '<span class="alt">' + fmtS(value) + '</span>' +
+    '</div>';
   }
 
   function renderCard() {
@@ -615,30 +681,33 @@
       html += '<div class="warn warn--danger">Арбитраж: выгодно купить и разобрать — покупка ' +
         num(buy) + ' ₸, разборка оценивается в ' + num(recycleSum) + ' ₸.</div>';
     }
-    if (isCraftable && sell > fair) {
-      html += '<div class="warn warn--danger">Продажа игроку (' + num(sell) +
-        ' ₸) выше стоимости крафта (' + num(fair) + ' ₸) — игроки будут крафтить на продажу.</div>';
+    if (isCraftable) {
+      // Сколько игроку стоят материалы, если покупать их у администратора.
+      var materialsAtBuy = 0;
+      item.craft.ingredients.forEach(function (ing) {
+        if (!byId[ing.id]) { return; }
+        materialsAtBuy += buyPrice(ing.id) * (Number(ing.amount) || 0);
+      });
+      materialsAtBuy = materialsAtBuy / (Number(item.craft.output) || 1);
+      if (sell > materialsAtBuy) {
+        html += '<div class="warn warn--danger">Выкуп (' + fmtT(sell) +
+          ') выше стоимости материалов по цене продажи (' + fmtT(materialsAtBuy) +
+          ') — игрок заработает на крафте.</div>';
+      }
     }
     if (item.verified === false) {
       html += '<div class="warn warn--warn">Рецепт или разборка не проверены — уточните данные в data.js.</div>';
     }
 
     html += '<div class="price-grid">' +
-      '<div class="price-cell">' +
-        '<span class="label">Игрок покупает</span>' +
-        '<strong>' + num(buy) + ' ₸</strong>' +
-        '<span class="rub">' + num(buy / state.settings.rubRate) + ' ₽</span>' +
-      '</div>' +
-      '<div class="price-cell">' +
-        '<span class="label">Игрок продаёт</span>' +
-        '<strong>' + num(sell) + ' ₸</strong>' +
-        '<span class="rub">' + num(sell / state.settings.rubRate) + ' ₽</span>' +
-      '</div>' +
+      priceCellHtml('Себестоимость', fair) +
+      priceCellHtml('Продажа игроку', buy) +
+      priceCellHtml('Выкуп у игрока', sell) +
     '</div>';
 
     html += '<p class="spread">Спред: <strong>' + spread.toFixed(0) + '%</strong>' +
       ' · наценка ' + (state.settings.markup * 100).toFixed(0) +
-      '% · выкуп −' + (state.settings.discount * 100).toFixed(0) + '%</p>';
+      '% · выкуп ' + (buybackRate(item.category) * 100).toFixed(0) + '% себестоимости</p>';
 
     if (isCraftable) {
       var rows = ingredientTree(item, 0, [item.id], []);
@@ -710,8 +779,11 @@
       ['multQuick', state.settings.yieldMultiplier],
       ['setK', state.settings.yieldK],
       ['setRate', state.settings.rubRate],
+      ['setScrap', state.settings.scrapPrice],
       ['setMarkup', Math.round(state.settings.markup * 1000) / 10],
-      ['setDiscount', Math.round(state.settings.discount * 1000) / 10]
+      ['setBuybackRes', Math.round(state.settings.buyback.resources * 1000) / 10],
+      ['setBuybackComp', Math.round(state.settings.buyback.components * 1000) / 10],
+      ['setBuybackGoods', Math.round(state.settings.buyback['default'] * 1000) / 10]
     ];
     pairs.forEach(function (pair) {
       var el = document.getElementById(pair[0]);
@@ -725,7 +797,7 @@
     });
     var rateNote = document.getElementById('rateNote');
     if (rateNote) {
-      rateNote.textContent = '1 ₽ = ' + num(state.settings.rubRate) + ' ₸';
+      rateNote.textContent = '1 ₽ = ' + num(state.settings.rubRate) + ' ₸ · 1 скрап = ' + num(state.settings.scrapPrice) + ' ₸';
     }
   }
 
@@ -760,7 +832,7 @@
     try {
       var payload = {
         app: 'rust-economy',
-        version: 1,
+        version: 2,
         exportedAt: new Date().toISOString(),
         settings: state.settings,
         overrides: state.overrides
@@ -804,13 +876,7 @@
 
   function resetAll() {
     if (!window.confirm('Сбросить настройки и все ручные цены?')) { return; }
-    state.settings = {
-      rubRate: DEFAULTS.rubRate,
-      yieldMultiplier: DEFAULTS.yieldMultiplier,
-      yieldK: DEFAULTS.yieldK,
-      markup: DEFAULTS.markup,
-      discount: DEFAULTS.discount
-    };
+    state.settings = defaultSettings();
     state.overrides = {};
     clearCache();
     try { window.localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ничего */ }
@@ -1022,9 +1088,22 @@
       var percent = clampNumber(e.target.value, -90, 1000, state.settings.markup * 100);
       applySettings({ markup: percent / 100 });
     });
-    document.getElementById('setDiscount').addEventListener('change', function (e) {
-      var percent = clampNumber(e.target.value, -90, 90, state.settings.discount * 100);
-      applySettings({ discount: percent / 100 });
+    document.getElementById('setScrap').addEventListener('change', function (e) {
+      applySettings({ scrapPrice: clampNumber(e.target.value, 0.01, 1000000, state.settings.scrapPrice) });
+    });
+    [['setBuybackRes', 'resources'], ['setBuybackComp', 'components'], ['setBuybackGoods', 'default']].forEach(function (pair) {
+      var el = document.getElementById(pair[0]);
+      if (!el) { return; }
+      el.addEventListener('change', function (e) {
+        var percent = clampNumber(e.target.value, 0, 95, state.settings.buyback[pair[1]] * 100);
+        var next = {
+          resources: state.settings.buyback.resources,
+          components: state.settings.buyback.components,
+          'default': state.settings.buyback['default']
+        };
+        next[pair[1]] = percent / 100;
+        applySettings({ buyback: next });
+      });
     });
 
     document.getElementById('btnExport').addEventListener('click', exportJson);

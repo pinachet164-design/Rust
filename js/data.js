@@ -18,8 +18,13 @@ var RUST_DATA = {
     rubRate: 5,          // 1 рубль = 5 тугриков
     yieldMultiplier: 1,  // множитель добычи на сервере
     yieldK: 0.7,         // показатель степени K в формуле цены сырья
-    markup: 0.25,        // наценка продажи (+25%)
-    discount: 0.25       // скидка выкупа (-25%)
+    scrapPrice: 25,      // цена 1 скрапа в тугриках
+    markup: 0.25,        // продажа игроку = себестоимость × (1 + наценка)
+    buyback: {           // выкуп у игрока = себестоимость × доля
+      resources: 0.45,   // сырьё
+      components: 0.55,  // компоненты
+      default: 0.67      // готовые предметы и всё остальное
+    }
   },
 
   categories: [
@@ -579,8 +584,8 @@ var RUST_DATA = {
     },
 
     /* ---------------- РЕСУРСЫ (сырьё) ---------------- */
-    { id: 'wood', name: 'Дерево', category: 'resources', basePrice: 1, verified: true },
-    { id: 'stones', name: 'Камень', category: 'resources', basePrice: 1, verified: true },
+    { id: 'wood', name: 'Дерево', category: 'resources', basePrice: 2, verified: true },
+    { id: 'stones', name: 'Камень', category: 'resources', basePrice: 2, verified: true },
     { id: 'metal.fragments', name: 'Металлические фрагменты', category: 'resources', basePrice: 4, verified: true },
     { id: 'sulfur', name: 'Сера', category: 'resources', basePrice: 6, verified: true },
     { id: 'charcoal', name: 'Уголь', category: 'resources', basePrice: 2, verified: true },
@@ -590,7 +595,7 @@ var RUST_DATA = {
     { id: 'lowgradefuel', name: 'Низкосортное топливо', category: 'resources', basePrice: 3, verified: true },
     { id: 'crude.oil', name: 'Сырая нефть', category: 'resources', basePrice: 4, verified: true },
     { id: 'animal.fat', name: 'Животный жир', category: 'resources', basePrice: 4, verified: true },
-    { id: 'bone.fragments', name: 'Кости', category: 'resources', basePrice: 1, verified: true },
+    { id: 'bone.fragments', name: 'Кости', category: 'resources', basePrice: 2, verified: true },
     { id: 'scrap', name: 'Металлолом (scrap)', category: 'resources', basePrice: 25, verified: true },
 
     /* ---------------- КОМПОНЕНТЫ ---------------- */
