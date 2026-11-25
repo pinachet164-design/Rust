@@ -49,7 +49,7 @@
   var categoriesById = {};
   DATA.categories.forEach(function (c) { categoriesById[c.id] = c; });
 
-  var KNOWN_FIELDS = ['id', 'name', 'category', 'basePrice', 'craft', 'recycle', 'verified'];
+  var KNOWN_FIELDS = ['id', 'name', 'category', 'stack', 'basePrice', 'craft', 'recycle', 'verified'];
 
   function normalizeItems(input) {
     if (!Array.isArray(input)) { throw new Error('items'); }
@@ -65,6 +65,9 @@
         name: String(raw.name || id),
         category: categoriesById[raw.category] ? raw.category : 'misc'
       };
+      if (isFinite(raw.stack) && Number(raw.stack) > 0) {
+        item.stack = Number(raw.stack);
+      }
       if (isFinite(raw.basePrice) && Number(raw.basePrice) >= 0) {
         item.basePrice = Number(raw.basePrice);
       }
@@ -73,6 +76,13 @@
         var craft = { output: 1, ingredients: [] };
         if (isFinite(raw.craft.output) && Number(raw.craft.output) > 0) {
           craft.output = Number(raw.craft.output);
+        }
+        // Время крафта и требуемый верстак (0 — без верстака).
+        if (isFinite(raw.craft.time) && Number(raw.craft.time) >= 0) {
+          craft.time = Number(raw.craft.time);
+        }
+        if (isFinite(raw.craft.bench) && Number(raw.craft.bench) >= 0) {
+          craft.bench = Number(raw.craft.bench);
         }
         if (Array.isArray(raw.craft.ingredients)) {
           raw.craft.ingredients.forEach(function (ing) {
