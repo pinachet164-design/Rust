@@ -247,7 +247,7 @@ button, input, select {
 
 .ptable {
   width: 100%;
-  min-width: 740px;
+  min-width: 700px;
   border-collapse: collapse;
   font-size: 0.92rem;
 }
@@ -319,7 +319,7 @@ button, input, select {
 }
 
 .pinput {
-  width: 104px;
+  width: 96px;
   padding: 6px 8px;
   border-radius: 7px;
   border: 1px solid var(--line);
@@ -875,6 +875,25 @@ button, input, select {
 }
 
 /* ===== Адаптив ===== */
+
+/* В режиме таблицы карточка — выезжающая панель, таблица занимает всю ширину */
+@media (min-width: 901px) {
+  body.view-table .layout { grid-template-columns: 210px minmax(0, 1fr); }
+
+  body.view-table .card {
+    position: fixed;
+    top: 88px;
+    right: 16px;
+    bottom: 16px;
+    width: 380px;
+    max-height: none;
+    z-index: 30;
+    display: none;
+    box-shadow: -10px 0 26px rgba(0, 0, 0, 0.45);
+  }
+
+  body.view-table .card.card--open { display: block; }
+}
 
 @media (max-width: 1180px) {
   .layout { grid-template-columns: 190px minmax(0, 1fr) 340px; }

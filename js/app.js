@@ -357,6 +357,7 @@
 
   function syncView() {
     var isTable = state.view === 'table';
+    document.body.classList.toggle('view-table', isTable);
     var panel = document.getElementById('tablePanel');
     var wrap = document.getElementById('tableWrap');
     var list = document.getElementById('list');
