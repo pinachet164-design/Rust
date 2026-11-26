@@ -3,83 +3,53 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Экономика Rust — калькулятор цен</title>
+  <title>Экономика Rust — магазин, рецепты и цены</title>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <header class="topbar">
     <div class="brand">Экономика <span>Rust</span></div>
 
-    <div class="toolbar">
-      <label class="search">
-        <span class="visually-hidden">Поиск по названию или shortname</span>
-        <input type="search" id="search" placeholder="Поиск: автомат, rifle.ak…" autocomplete="off">
-      </label>
+    <label class="search">
+      <span class="visually-hidden">Поиск по названию или shortname</span>
+      <input type="search" id="search" placeholder="Поиск: AK, wood, патрон…" autocomplete="off">
+    </label>
 
-      <label class="switch">
-        <input type="checkbox" id="craftOnly">
-        <span>только крафтовые</span>
-      </label>
+    <label class="select">
+      <span class="visually-hidden">Сортировка</span>
+      <select id="sort">
+        <option value="name">По названию</option>
+        <option value="buy-asc">Покупка: дешевле</option>
+        <option value="buy-desc">Покупка: дороже</option>
+        <option value="sell-desc">Продажа: дороже</option>
+      </select>
+    </label>
 
-      <label class="select">
-        <span class="visually-hidden">Сортировка</span>
-        <select id="sort">
-          <option value="name">По названию</option>
-          <option value="price-asc">Цена: по возрастанию</option>
-          <option value="price-desc">Цена: по убыванию</option>
-        </select>
-      </label>
-
-      <div class="mult">
-        <label for="multQuick">Добыча ×</label>
-        <input type="number" id="multQuick" min="0.1" step="0.5" inputmode="decimal" value="1">
-        <div class="presets">
-          <button type="button" data-mult="1">x1</button>
-          <button type="button" data-mult="2">x2</button>
-          <button type="button" data-mult="3">x3</button>
-          <button type="button" data-mult="5">x5</button>
-          <button type="button" data-mult="10">x10</button>
-        </div>
-      </div>
-
-      <span class="rate-note" id="rateNote">1 ₽ = 5 ₸ · 1 ₸ = 10 000 скрапа</span>
-
-      <div class="view-switch" id="viewSwitch" role="group" aria-label="Вид отображения">
-        <button type="button" data-view="list" class="is-active" aria-pressed="true">Список</button>
-        <button type="button" data-view="table" aria-pressed="false">Таблица</button>
-      </div>
-
-      <button type="button" class="btn" id="btnSettings">Настройки</button>
+          <div class="view-switch" id="viewSwitch" role="group" aria-label="Вид отображения">
+      <button type="button" data-view="list" class="is-active" aria-pressed="true">Список</button>
+      <button type="button" data-view="table" aria-pressed="false">Таблица</button>
     </div>
+
+    <button type="button" class="btn" id="btnSettings">Настройки</button>
   </header>
 
   <main class="layout">
-    <nav class="cats" id="cats" aria-label="Категории предметов"></nav>
+    <nav class="cats" id="cats" aria-label="Категории"></nav>
 
-    <section class="content" id="content">
+    <section class="content">
       <div class="list-head">
-        <h1 id="catTitle">Оружие</h1>
-        <span class="count" id="count">0 предметов</span>
+        <h1 id="catTitle">Все предметы</h1>
+        <span class="count" id="count"></span>
       </div>
 
-      <div class="table-panel" id="tablePanel" hidden>
-        <div class="table-actions">
-          <label class="table-action">
-            <span>Округлить</span>
-            <select id="roundStep">
-              <option value="1">до 1 ₸</option>
-              <option value="5">до 5 ₸</option>
-              <option value="10" selected>до 10 ₸</option>
-              <option value="50">до 50 ₸</option>
-              <option value="100">до 100 ₸</option>
-              <option value="500">до 500 ₸</option>
-            </select>
-          </label>
-          <button type="button" class="btn btn--ghost" id="btnRound">Применить</button>
-          <button type="button" class="btn btn--ghost" id="btnResetPrices">Сбросить ручные</button>
-          <button type="button" class="btn" id="btnCsv">Выгрузить CSV</button>
-          <span class="table-hint">Покупка округляется вверх, продажа — вниз. Действия применяются к видимым строкам.</span>
-        </div>
+      <div class="filters" id="filters">
+        <button type="button" class="chip" id="btnCsv">Выгрузить CSV</button>
+        <label class="switch">
+          <input type="checkbox" id="craftOnly">
+          <span>только крафт</span>
+        </label>
+        <button type="button" class="chip" id="btnLoadTop">Загрузить таблицу Excel</button>
+        <span class="hint-inline" id="sourceNote"></span>
       </div>
 
       <div class="table-wrap" id="tableWrap" hidden>
@@ -87,12 +57,12 @@
           <thead>
             <tr>
               <th scope="col">Предмет</th>
-              <th scope="col" class="num">Себестоимость<span class="th-unit">₸</span></th>
-              <th scope="col" class="num">Продажа игроку<span class="th-unit">₸</span></th>
-              <th scope="col" class="num">Выкуп у игрока<span class="th-unit">₸</span></th>
-              <th scope="col" class="num">Спред</th>
-              <th scope="col" class="num">Разборка</th>
-              <th scope="col"><span class="visually-hidden">Сброс ручных цен</span></th>
+              <th scope="col">Редкость</th>
+              <th scope="col" class="num">Себест.<span class="th-unit">₮</span></th>
+              <th scope="col" class="num">Покупка<span class="th-unit">₮</span></th>
+              <th scope="col" class="num">Продажа<span class="th-unit">₮</span></th>
+              <th scope="col" class="num">Стак</th>
+              <th scope="col" class="num">Макс/день</th>
             </tr>
           </thead>
           <tbody id="tableBody"></tbody>
@@ -103,16 +73,11 @@
       <p class="empty" id="empty" hidden>Ничего не найдено. Попробуйте другой запрос.</p>
     </section>
 
-    <aside class="card" id="card" aria-live="polite">
-      <div class="card-empty">
-        <p>Выберите предмет слева, чтобы увидеть рецепт, разборку и цены.</p>
-      </div>
-    </aside>
+    <aside class="card" id="card" aria-live="polite"></aside>
   </main>
 
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-
-  <div class="overlay" id="settingsOverlay" hidden></div>
+  <div class="overlay" id="overlay" hidden></div>
 
   <section class="drawer" id="settings" aria-labelledby="settingsTitle" hidden>
     <div class="drawer-head">
@@ -122,71 +87,52 @@
 
     <div class="drawer-body">
       <div class="field">
-        <label for="setMult">Множитель добычи</label>
-        <input type="number" id="setMult" min="0.1" step="0.5" inputmode="decimal">
-        <div class="presets presets--wide">
-          <button type="button" data-mult="1">x1</button>
-          <button type="button" data-mult="2">x2</button>
-          <button type="button" data-mult="3">x3</button>
-          <button type="button" data-mult="5">x5</button>
-          <button type="button" data-mult="10">x10</button>
-        </div>
-        <p class="hint">Чем выше множитель, тем дешевле сырьё. Цена сырья = базовая ÷ (множитель ^ K).</p>
+        <label for="setBuy">Покупка у магазина: множитель</label>
+        <input type="number" id="setBuy" min="0.1" step="0.1" inputmode="decimal">
+        <p class="hint">Цена покупки = себестоимость × редкость × множитель. В таблице — 2.5.</p>
       </div>
 
       <div class="field">
-        <label for="setK">Показатель K</label>
-        <input type="number" id="setK" min="0" max="3" step="0.05" inputmode="decimal">
-        <p class="hint">0 — цена падает строго пропорционально, 1 — линейно растёт добыча. По умолчанию 0.7.</p>
+        <label for="setSell">Продажа магазину: множитель</label>
+        <input type="number" id="setSell" min="0.05" step="0.05" inputmode="decimal">
+        <p class="hint">Цена продажи = себестоимость × множитель. В таблице — 0.4.</p>
       </div>
+
+      <div class="field">
+        <label for="setDlc">Наценка DLC, ×</label>
+        <input type="number" id="setDlc" min="1" step="0.05" inputmode="decimal">
+        <p class="hint">Предметы с пометкой DLC дороже в это число раз. В таблице — 1.3.</p>
+      </div>
+
+      <fieldset class="field">
+        <legend>Коэффициенты редкости</legend>
+        <div class="rarity-grid" id="rarityGrid"></div>
+        <p class="hint">Влияют только на цену покупки у магазина.</p>
+      </fieldset>
 
       <div class="field">
         <label for="setRate">Курс: тугриков за 1 ₽</label>
         <input type="number" id="setRate" min="0.01" step="0.5" inputmode="decimal">
-        <p class="hint">Базовая валюта — тугрик. Все цены показываются в ₸, ₽ и скрапе.</p>
+        <p class="hint">Базовая валюта — тугрик. Рубли и скрап только показываются.</p>
       </div>
 
       <div class="field">
-        <label for="setScrap">Цена 1 скрапа, ₸</label>
+        <label for="setScrap">Цена 1 скрапа, ₮</label>
         <input type="number" id="setScrap" min="0.000001" step="0.0001" inputmode="decimal">
-        <p class="hint">Скрап — не отдельный курс, а пересчёт по цене металлолома. По умолчанию 0,0001 ₸: 1 тугрик = 10 000 скрапа.</p>
-      </div>
-
-      <div class="field">
-        <label for="setMarkup">Наценка продажи игроку, %</label>
-        <input type="number" id="setMarkup" min="-90" step="1" inputmode="decimal">
-        <p class="hint">Продажа игроку = себестоимость × (1 + наценка). По умолчанию 25%.</p>
-      </div>
-
-      <div class="field">
-        <label for="setBuybackRes">Выкуп у игрока: сырьё, %</label>
-        <input type="number" id="setBuybackRes" min="0" max="95" step="1" inputmode="decimal">
-        <p class="hint">Доля себестоимости, которую получает игрок. По умолчанию 45%.</p>
-      </div>
-
-      <div class="field">
-        <label for="setBuybackComp">Выкуп у игрока: компоненты, %</label>
-        <input type="number" id="setBuybackComp" min="0" max="95" step="1" inputmode="decimal">
-        <p class="hint">По умолчанию 55%.</p>
-      </div>
-
-      <div class="field">
-        <label for="setBuybackGoods">Выкуп у игрока: готовые предметы, %</label>
-        <input type="number" id="setBuybackGoods" min="0" max="95" step="1" inputmode="decimal">
-        <p class="hint">Остальные категории. По умолчанию 67%.</p>
+        <p class="hint">По умолчанию 0,0001 ₮: 1 тугрик = 10 000 скрапа.</p>
       </div>
 
       <div class="drawer-actions">
-        <button type="button" class="btn" id="btnExport">Сохранить таблицу</button>
         <button type="button" class="btn" id="btnImport">Загрузить таблицу</button>
+        <button type="button" class="btn btn--ghost" id="btnExport">Сохранить JSON</button>
         <button type="button" class="btn btn--danger" id="btnReset">Сбросить всё</button>
-        <input type="file" id="importFile" accept="application/json,.json,.xlsx" hidden>
       </div>
+
+      <input type="file" id="importFile" accept=".xlsx,.json" hidden>
 
       <div class="hint import-report" id="importReport" hidden></div>
 
-      <p class="hint">«Сохранить таблицу» — файл rust-economy.json со всей таблицей: названия, категории, базовые цены, рецепты и разборка, плюс настройки и ручные цены. «Загрузить таблицу» принимает эту же выгрузку (JSON) или файл Excel «Amigos экономика» (.xlsx): из него берутся стаки, время крафта, выход за крафт и рецепты — только для предметов, которые есть в справочнике. CSV — только для чтения в Excel, обратно он не загружается.</p>
-      <p class="hint">Настройки, загруженная таблица и ручные цены сохраняются в localStorage этого браузера.</p>
+      <p class="hint">«Загрузить таблицу» принимает .xlsx из этого файла (листы «Ресурсы», «Крафтовые предметы», «Некрафтовые предметы», «Настройки») или сохранённый JSON. После импорта весь каталог берётся из файла и хранится в этом браузере.</p>
     </div>
   </section>
 
