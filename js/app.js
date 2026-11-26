@@ -17,9 +17,16 @@
     search: '',
     sort: 'name',
     craftOnly: false,
+    onlyReal: true,
     view: 'list',
     opened: null
   };
+
+  /* Справочник предметов игры: shortname -> [EN, RU]. */
+  var GAME_ITEMS = window.RUST_GAME_ITEMS || {};
+  var gameByShort = {};
+  var gameByName = {};
+  var gameKeys = [];
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -134,6 +141,107 @@
 
   function entryKey(entry) { return entry.kind + ':' + entry.id; }
 
+  /* =====================  Проверка по предметам Rust  ===================== */
+
+  function nameKey(value) {
+    return String(value == null ? '' : value)
+      .toLowerCase()
+      .replace(/ё/g, 'е')
+      .replace(/[^a-zа-я0-9]+/g, ' ')
+      .trim();
+  }
+
+  // Варианты перевода, которые встречаются в таблицах, → слова из локализации игры.
+  var NAME_SYNONYMS = {
+    'сальвированный': 'самодельный', 'сальвированная': 'самодельная', 'сальвированное': 'самодельное',
+    'индустриальный': 'промышленный', 'индустриальная': 'промышленная', 'индустриальное': 'промышленное',
+    'индустриальные': 'промышленные', 'индустриальный': 'промышленный',
+    'хв': 'hv', 'нv': 'hv'
+  };
+
+  function stemOf(word) {
+    var mapped = NAME_SYNONYMS[word] || word;
+    return mapped.length > 5 ? mapped.slice(0, 5) : mapped;
+  }
+
+  function tokensOf(key) {
+    var stop = { 'из': 1, 'для': 1, 'на': 1, 'с': 1, 'и': 1, 'the': 1, 'of': 1, 'a': 1 };
+    var out = [];
+    key.split(' ').forEach(function (word) {
+      if (!word || stop[word]) { return; }
+      var stem = stemOf(word);
+      if (out.indexOf(stem) === -1) { out.push(stem); }
+    });
+    return out;
+  }
+
+  function buildGameIndex() {
+    gameByShort = {};
+    gameByName = {};
+    gameKeys = [];
+    Object.keys(GAME_ITEMS).forEach(function (short) {
+      var pair = GAME_ITEMS[short] || [];
+      gameByShort[short.toLowerCase()] = short;
+      [pair[0], pair[1]].forEach(function (name) {
+        var key = nameKey(name);
+        if (key && !gameByName[key]) { gameByName[key] = short; }
+      });
+      gameKeys.push({
+        short: short,
+        tokens: tokensOf(nameKey(pair[0])).concat(tokensOf(nameKey(pair[1])))
+      });
+    });
+  }
+
+  // Возвращает настоящий shortname (или null, если предмета нет в игре).
+  function matchGameItem(item) {
+    var short = String(item.id || '').trim().toLowerCase();
+    if (short && gameByShort[short]) { return gameByShort[short]; }
+    var key = nameKey(item.name);
+    if (key && gameByName[key]) { return gameByName[key]; }
+    var tokens = tokensOf(key);
+    if (!tokens.length) { return null; }
+
+    var best = null;
+    var bestScore = 0;
+    var second = 0;
+    gameKeys.forEach(function (entry) {
+      var hit = 0;
+      tokens.forEach(function (token) {
+        if (entry.tokens.indexOf(token) !== -1) { hit++; }
+      });
+      var union = tokens.length + entry.tokens.length - hit;
+      var score = union ? hit / union : 0;
+      // «барабанная установка» ⊂ «барабанная установка из хлама»
+      if (hit === tokens.length && entry.tokens.length > tokens.length) {
+        score = Math.max(score, 0.7);
+      }
+      if (score > bestScore) { second = bestScore; bestScore = score; best = entry; }
+      else if (score > second) { second = score; }
+    });
+
+    if (best && bestScore >= 0.5 && bestScore - second >= 0.12) { return best.short; }
+    return null;
+  }
+
+  // Состояния: ok — shortname есть в игре; name — совпало по названию;
+  // missing — shortname указан, но такого предмета в игре нет; unknown — проверить нечем.
+  function annotateCatalog() {
+    items.forEach(function (item) {
+      var short = String(item.id || '').trim().toLowerCase();
+      var real = matchGameItem(item);
+      item.gameShort = real || '';
+      if (short && gameByShort[short]) { item.gameState = 'ok'; }
+      else if (real) { item.gameState = 'name'; }
+      else if (short) { item.gameState = 'missing'; }
+      else { item.gameState = 'unknown'; }
+    });
+  }
+
+  function itemsWithState(stateName) {
+    return items.filter(function (item) { return item.gameState === stateName; });
+  }
+
   /* =====================  Фильтр и сортировка  ===================== */
 
   function categories() {
@@ -160,6 +268,7 @@
       if (state.category !== 'all' && state.category !== 'resources') {
         if (entry.kind !== 'item' || item.category !== state.category) { return false; }
       }
+      if (state.onlyReal && entry.kind === 'item' && item.gameState === 'missing') { return false; }
       if (state.craftOnly && !item.craft) { return false; }
       if (!search) { return true; }
       var haystack = (item.name + ' ' + (item.id || '') + ' ' + (item.rarity || '')).toLowerCase();
@@ -231,7 +340,20 @@
     else if (state.category === 'resources') { title.textContent = 'Ресурсы'; }
     else { title.textContent = state.category; }
 
-    document.getElementById('sourceNote').textContent = 'Данные: ' + sourceNote;
+    document.getElementById('sourceNote').textContent = sourceSummary();
+  }
+
+  function sourceSummary() {
+    var text = 'Данные: ' + sourceNote;
+    var hidden = itemsWithState('missing').length;
+    var unknown = itemsWithState('unknown').length;
+    if (hidden) {
+      text += ' · нет в Rust: ' + hidden + (state.onlyReal ? ' (скрыты)' : ' (показаны)');
+    }
+    if (unknown) {
+      text += ' · без shortname: ' + unknown;
+    }
+    return text;
   }
 
   function renderTable() {
@@ -253,7 +375,7 @@
       '</tr>';
     });
     body.innerHTML = html;
-    document.getElementById('sourceNote').textContent = 'Данные: ' + sourceNote;
+    document.getElementById('sourceNote').textContent = sourceSummary();
   }
 
   function renderCard() {
@@ -277,6 +399,8 @@
       '<h2>' + escapeHtml(item.name) + '</h2>' +
       '<div class="card-tags"><span class="' + rarityClass(item.rarity) + '">' + escapeHtml(item.rarity || '—') + '</span>' +
       (item.dlc ? '<span class="tag tag--dlc">DLC</span>' : '') +
+      (entry.kind === 'item' && item.gameState === 'missing' ? '<span class="tag tag--missing">нет в Rust</span>' : '') +
+      (entry.kind === 'item' && item.gameState === 'unknown' ? '<span class="tag tag--missing">без shortname</span>' : '') +
       (item.craft ? '<span class="tag tag--soft">крафт</span>' : '<span class="tag tag--soft">' + (kind === 'resource' ? 'ресурс' : 'некрафт') + '</span>') +
       '</div>' +
       '<p class="shortname">' + escapeHtml(item.id || 'без shortname') + '</p>' +
@@ -294,6 +418,12 @@
       '<div><dt>Категория</dt><dd>' + escapeHtml(item.category || '—') + '</dd></div>' +
       '<div><dt>Множитель редкости</dt><dd>×' + num(rarityCoef(item.rarity), 2) + '</dd></div>' +
     '</dl>';
+
+    if (kind === 'item' && item.gameState === 'missing') {
+      html += '<p class="card-note card-note--warn">Этого shortname нет в списке предметов Rust — сайт скрывает позицию из каталога (галочка «только из Rust»).</p>';
+    } else if (kind === 'item' && item.gameState === 'unknown') {
+      html += '<p class="card-note card-note--warn">В таблице у предмета нет shortname, поэтому проверить его по игре нельзя.</p>';
+    }
 
     if (kind === 'resource') {
       html += '<p class="card-note">Цена ресурса задаётся в таблице и участвует в себестоимости всех рецептов.</p>';
@@ -885,6 +1015,7 @@
         items = craft.concat(loot);
         sourceNote = 'файл ' + (file.name || 'Excel');
         rebuildIndexes();
+        annotateCatalog();
         syncSettingsInputs();
         renderAll();
         saveState();
@@ -893,10 +1024,20 @@
         if (report) {
           report.hidden = false;
           var unresolved = craft.filter(function (item) { return item.unresolved > 0; }).length;
+          var missing = itemsWithState('missing');
+          var unknown = itemsWithState('unknown');
+          var names = missing.slice(0, 12).map(function (item) { return escapeHtml(item.name); }).join(', ');
           report.innerHTML = '<strong>Импорт таблицы:</strong> ресурсов ' + resources.length +
             ', крафтовых ' + craft.length + ', некрафтовых ' + loot.length + '.' +
             (unresolved ? '<br>Рецептов с неизвестными ингредиентами: ' + unresolved +
-              ' — у них себестоимость взята из таблицы.' : '');
+              ' — у них себестоимость взята из таблицы.' : '') +
+            (missing.length
+              ? '<br>Убрано как несуществующие (shortname нет в Rust): ' + missing.length + ' — ' + names +
+                (missing.length > 12 ? ' и ещё ' + (missing.length - 12) : '') + '.'
+              : '<br>Все shortname найдены в списке предметов Rust.') +
+            (unknown.length
+              ? '<br>Без shortname — проверить нельзя: ' + unknown.length + ' (помечены в карточке).'
+              : '');
         }
         toast('Загружено: ' + resources.length + ' ресурсов, ' + items.length + ' предметов');
       }).catch(function (error) {
@@ -932,6 +1073,11 @@
 
     document.getElementById('craftOnly').addEventListener('change', function (e) {
       state.craftOnly = e.target.checked;
+      renderAll();
+    });
+
+    document.getElementById('onlyReal').addEventListener('change', function (e) {
+      state.onlyReal = e.target.checked;
       renderAll();
     });
 
@@ -1029,8 +1175,10 @@
   }
 
   function init() {
+    buildGameIndex();
     loadState();
     rebuildIndexes();
+    annotateCatalog();
     bindEvents();
     syncSettingsInputs();
     renderAll();

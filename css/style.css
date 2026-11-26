@@ -335,6 +335,7 @@ button, input, select { font: inherit; color: inherit; }
 .tag--легендарный { color: #e8b657; border-color: #6b4d1c; }
 .tag--dlc { color: #e08bad; border-color: #6a2b45; }
 .tag--soft { color: var(--muted); }
+.tag--missing { color: var(--rust-soft); border-color: #6d2a20; }
 
 /* ---------- таблица ---------- */
 
