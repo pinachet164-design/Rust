@@ -43,6 +43,7 @@
       </div>
 
       <div class="filters" id="filters">
+        <button type="button" class="chip" id="btnXlsx">Скачать таблицу Excel</button>
         <button type="button" class="chip" id="btnCsv">Выгрузить CSV</button>
         <label class="switch">
           <input type="checkbox" id="onlyReal" checked>
@@ -128,6 +129,7 @@
 
       <div class="drawer-actions">
         <button type="button" class="btn" id="btnImport">Загрузить таблицу</button>
+        <button type="button" class="btn btn--ghost" id="btnExportXlsx">Скачать Excel</button>
         <button type="button" class="btn btn--ghost" id="btnExport">Сохранить JSON</button>
         <button type="button" class="btn btn--danger" id="btnReset">Сбросить всё</button>
       </div>
@@ -136,7 +138,7 @@
 
       <div class="hint import-report" id="importReport" hidden></div>
 
-      <p class="hint">«Загрузить таблицу» принимает .xlsx из этого файла (листы «Ресурсы», «Крафтовые предметы», «Некрафтовые предметы», «Настройки») или сохранённый JSON. После импорта весь каталог берётся из файла и хранится в этом браузере.</p>
+      <p class="hint">«Загрузить таблицу» принимает .xlsx из этого файла (листы «Ресурсы», «Крафтовые предметы», «Некрафтовые предметы», «Настройки») или сохранённый JSON. «Скачать Excel» сохраняет текущий каталог в тех же листах — файл можно править в Excel и снова загрузить сюда: цены пересчитаются по рецептам.</p>
     </div>
   </section>
 

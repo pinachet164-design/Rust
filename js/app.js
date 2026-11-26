@@ -618,6 +618,279 @@
     toast('CSV готов');
   }
 
+  /* =====================  Экспорт в .xlsx  ===================== */
+
+  var CRC_TABLE = (function () {
+    var table = new Uint32Array(256);
+    for (var n = 0; n < 256; n++) {
+      var c = n;
+      for (var k = 0; k < 8; k++) {
+        c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      }
+      table[n] = c >>> 0;
+    }
+    return table;
+  })();
+
+  function crc32(bytes) {
+    var c = 0xFFFFFFFF;
+    for (var i = 0; i < bytes.length; i++) {
+      c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+    }
+    return (c ^ 0xFFFFFFFF) >>> 0;
+  }
+
+  // Простейший zip без сжатия (method 0): Excel открывает такой файл нормально.
+  function zipStore(files) {
+    var encoder = new TextEncoder();
+    var chunks = [];
+    var central = [];
+    var offset = 0;
+
+    files.forEach(function (file) {
+      var nameBytes = encoder.encode(file.name);
+      var data = file.data;
+      var crc = crc32(data);
+
+      var local = new Uint8Array(30 + nameBytes.length);
+      var lv = new DataView(local.buffer);
+      lv.setUint32(0, 0x04034b50, true);
+      lv.setUint16(4, 20, true);
+      lv.setUint16(6, 0x0800, true);
+      lv.setUint16(8, 0, true);
+      lv.setUint16(10, 0, true);
+      lv.setUint16(12, 0x21, true);
+      lv.setUint32(14, crc, true);
+      lv.setUint32(18, data.length, true);
+      lv.setUint32(22, data.length, true);
+      lv.setUint16(26, nameBytes.length, true);
+      local.set(nameBytes, 30);
+
+      var cen = new Uint8Array(46 + nameBytes.length);
+      var cv = new DataView(cen.buffer);
+      cv.setUint32(0, 0x02014b50, true);
+      cv.setUint16(4, 20, true);
+      cv.setUint16(6, 20, true);
+      cv.setUint16(8, 0x0800, true);
+      cv.setUint16(10, 0, true);
+      cv.setUint16(12, 0, true);
+      cv.setUint16(14, 0x21, true);
+      cv.setUint32(16, crc, true);
+      cv.setUint32(20, data.length, true);
+      cv.setUint32(24, data.length, true);
+      cv.setUint16(28, nameBytes.length, true);
+      cv.setUint32(42, offset, true);
+      cen.set(nameBytes, 46);
+
+      chunks.push(local, data);
+      central.push(cen);
+      offset += local.length + data.length;
+    });
+
+    var centralSize = central.reduce(function (sum, part) { return sum + part.length; }, 0);
+    var end = new Uint8Array(22);
+    var ev = new DataView(end.buffer);
+    ev.setUint32(0, 0x06054b50, true);
+    ev.setUint16(8, files.length, true);
+    ev.setUint16(10, files.length, true);
+    ev.setUint32(12, centralSize, true);
+    ev.setUint32(16, offset, true);
+
+    return new Blob(chunks.concat(central, [end]), {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    });
+  }
+
+  function xmlEscape(value) {
+    return String(value == null ? '' : value)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '');
+  }
+
+  function columnName(index) {
+    var name = '';
+    index += 1;
+    while (index > 0) {
+      var rest = (index - 1) % 26;
+      name = String.fromCharCode(65 + rest) + name;
+      index = Math.floor((index - 1) / 26);
+    }
+    return name;
+  }
+
+  function sheetXml(rows) {
+    var out = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>';
+    rows.forEach(function (row, r) {
+      out += '<row r="' + (r + 1) + '">';
+      row.forEach(function (value, c) {
+        if (value === '' || value == null) { return; }
+        var ref = columnName(c) + (r + 1);
+        if (typeof value === 'number' && isFinite(value)) {
+          out += '<c r="' + ref + '"><v>' + value + '</v></c>';
+        } else {
+          out += '<c r="' + ref + '" t="inlineStr"><is><t xml:space="preserve">' + xmlEscape(value) + '</t></is></c>';
+        }
+      });
+      out += '</row>';
+    });
+    return out + '</sheetData></worksheet>';
+  }
+
+  function round2(value) {
+    return Math.round((Number(value) || 0) * 100) / 100;
+  }
+
+  function buildWorkbookRows() {
+    var settingsRows = [['⚙️ НАСТРОЙКИ ЭКОНОМИКИ — RUST ECONOMY PLUGIN'], ['КОЭФФИЦИЕНТЫ РЕДКОСТИ (влияют на итоговую цену)']];
+    RARITY_NAMES.forEach(function (name) {
+      settingsRows.push([name, 'Коэф. редкости ' + name, Number(settings.rarity[name]) || 1]);
+    });
+    settingsRows.push(['ОБЩИЕ МНОЖИТЕЛИ ЭКОНОМИКИ']);
+    settingsRows.push(['Цена покупки у магазина', 'buy_shop_mult', Number(settings.buyMult) || 1]);
+    settingsRows.push(['Цена продажи магазину', 'sell_to_shop_mult', Number(settings.sellMult) || 1]);
+    settingsRows.push(['Профит верстак Т2', 'wb2_mult', Number(settings.wb2Mult) || 1]);
+    settingsRows.push(['Профит верстак Т3', 'wb3_mult', Number(settings.wb3Mult) || 1]);
+    settingsRows.push(['Множитель DLC предметов', 'dlc_mult', Number(settings.dlcMult) || 1]);
+    settingsRows.push(['Курс: тугриков за 1 ₽', 'rub_rate', Number(settings.rubRate) || 1]);
+    settingsRows.push(['Цена 1 скрапа в тугриках', 'scrap_price', Number(settings.scrapPrice) || 1]);
+
+    var resourceRows = [['#', 'Ресурс', 'Категория', 'Редкость', 'Базовая цена (₮)', '📦 Стак', 'Цвет редкости', 'Примечание', '📊 Макс. продаж/день', '🔑 Shortname']];
+    resources.forEach(function (resource, index) {
+      resourceRows.push([
+        index + 1,
+        resource.name,
+        resource.category || '',
+        resource.rarity || '',
+        Number(resource.price) || 0,
+        Number(resource.stack) || 0,
+        resource.rarity || '',
+        '',
+        Number(resource.maxPerDay) || 0,
+        resource.id || ''
+      ]);
+    });
+
+    var craftHeader = ['#', 'Категория', 'Название предмета', 'Редкость', 'DLC',
+      'Ингредиент 1', 'Кол-во 1', 'Ингредиент 2', 'Кол-во 2', 'Ингредиент 3', 'Кол-во 3',
+      'Ингредиент 4', 'Кол-во 4', 'Ингредиент 5', 'Кол-во 5',
+      '📦 Стак', '💲 Себестоимость (₮)', '🛒 Цена покупки у магазина (₮)', '💰 Цена продажи магазину (₮)',
+      '📊 Макс. продаж/день', '🔑 Shortname'];
+    var craftRows = [craftHeader];
+    var lootHeader = ['#', 'Категория', 'Название предмета', 'Редкость', 'DLC', '📦 Стак', 'Цвет редкости',
+      'Где найти', '🛒 Цена покупки у магазина (₮)', '💰 Цена продажи магазину (₮)', '🔑 Shortname'];
+    var lootRows = [lootHeader];
+
+    items.forEach(function (item) {
+      var entry = { kind: 'item', id: item.id, data: item };
+      var cost = entryCost(entry);
+      if (item.craft) {
+        var row = [craftRows.length, item.category || '', item.name, item.rarity || '', item.dlc ? 'Да' : 'Нет'];
+        var ingredients = item.ingredients || [];
+        for (var i = 0; i < 5; i++) {
+          var ing = ingredients[i];
+          var resource = ing && ing.id ? resourceById[ing.id] : null;
+          row.push(ing ? (resource ? resource.name : (ing.name || '')) : '');
+          row.push(ing ? Number(ing.amount) || 0 : '');
+        }
+        row.push(Number(item.stack) || 0);
+        row.push(round2(cost));
+        row.push(round2(entryBuy(entry)));
+        row.push(round2(entrySell(entry)));
+        row.push(Number(item.maxPerDay) || 0);
+        row.push(item.id || '');
+        craftRows.push(row);
+      } else {
+        lootRows.push([
+          lootRows.length,
+          item.category || '',
+          item.name,
+          item.rarity || '',
+          item.dlc ? 'Да' : 'Нет',
+          Number(item.stack) || 0,
+          item.rarity || '',
+          item.source || '',
+          round2(entryBuy(entry)),
+          round2(entrySell(entry)),
+          item.id || ''
+        ]);
+      }
+    });
+
+    return [
+      { name: '⚙️ Настройки', rows: settingsRows },
+      { name: '📦 Ресурсы', rows: resourceRows },
+      { name: '🔨 Крафтовые предметы', rows: craftRows },
+      { name: '🎁 Некрафтовые предметы', rows: lootRows }
+    ];
+  }
+
+  function buildXlsxBlob() {
+    var sheets = buildWorkbookRows();
+    var encoder = new TextEncoder();
+    var files = [];
+
+    var overrides = '';
+    var sheetTags = '';
+    var sheetRels = '';
+    sheets.forEach(function (sheet, index) {
+      overrides += '<Override PartName="/xl/worksheets/sheet' + (index + 1) + '.xml" ' +
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>';
+      sheetTags += '<sheet name="' + xmlEscape(sheet.name) + '" sheetId="' + (index + 1) + '" r:id="rId' + (index + 1) + '"/>';
+      sheetRels += '<Relationship Id="rId' + (index + 1) + '" ' +
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" ' +
+        'Target="worksheets/sheet' + (index + 1) + '.xml"/>';
+      files.push({
+        name: 'xl/worksheets/sheet' + (index + 1) + '.xml',
+        data: encoder.encode(sheetXml(sheet.rows))
+      });
+    });
+
+    var contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+      overrides + '</Types>';
+
+    var rootRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+      '</Relationships>';
+
+    var workbook = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" ' +
+      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>' +
+      sheetTags + '</sheets></workbook>';
+
+    var workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      sheetRels + '</Relationships>';
+
+    files.unshift({ name: '[Content_Types].xml', data: encoder.encode(contentTypes) });
+    files.unshift({ name: '_rels/.rels', data: encoder.encode(rootRels) });
+    files.splice(2, 0, { name: 'xl/workbook.xml', data: encoder.encode(workbook) });
+    files.splice(3, 0, { name: 'xl/_rels/workbook.xml.rels', data: encoder.encode(workbookRels) });
+
+    return zipStore(files);
+  }
+
+  function exportXlsx() {
+    var blob = buildXlsxBlob();
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement('a');
+    link.href = url;
+    link.download = 'rust-economy.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+    toast('Таблица .xlsx сохранена: ' + resources.length + ' ресурсов, ' + items.length + ' предметов');
+  }
+
   function importJson(file) {
     var reader = new FileReader();
     reader.onload = function () {
@@ -800,10 +1073,18 @@
             }
           });
         }
-        if (key === 'buy shop mult' || key === 'sell to shop mult' || key === 'dlc mult' || key === 'wb2 mult' || key === 'wb3 mult') {
+        if (key === 'buy shop mult' || key === 'sell to shop mult' || key === 'dlc mult' || key === 'wb2 mult' || key === 'wb3 mult' || key === 'rub rate' || key === 'scrap price') {
           var number = parseNum(row[index + 1]);
           if (number > 0) {
-            var field = { 'buy shop mult': 'buyMult', 'sell to shop mult': 'sellMult', 'dlc mult': 'dlcMult', 'wb2 mult': 'wb2Mult', 'wb3 mult': 'wb3Mult' }[key];
+            var field = {
+              'buy shop mult': 'buyMult',
+              'sell to shop mult': 'sellMult',
+              'dlc mult': 'dlcMult',
+              'wb2 mult': 'wb2Mult',
+              'wb3 mult': 'wb3Mult',
+              'rub rate': 'rubRate',
+              'scrap price': 'scrapPrice'
+            }[key];
             patch[field] = number;
           }
         }
@@ -1122,6 +1403,8 @@
     bindSetting('setScrap', 'scrapPrice');
 
     document.getElementById('btnCsv').addEventListener('click', exportCsv);
+    document.getElementById('btnXlsx').addEventListener('click', exportXlsx);
+    document.getElementById('btnExportXlsx').addEventListener('click', exportXlsx);
     document.getElementById('btnExport').addEventListener('click', exportJson);
     document.getElementById('btnImport').addEventListener('click', pickFile);
     document.getElementById('btnLoadTop').addEventListener('click', pickFile);
