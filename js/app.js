@@ -6,8 +6,8 @@
   var STORAGE_KEY = 'rust-economy-v4';
 
   var settings = clone(DATA.settings);
-  var resources = DATA.resources.slice();
-  var items = DATA.items.slice();
+  var resources = clone(DATA.resources);
+  var items = clone(DATA.items);
   var resourceById = {};
   var itemById = {};
   var sourceNote = 'демо-данные';
@@ -19,7 +19,8 @@
     craftOnly: false,
     onlyReal: true,
     view: 'list',
-    opened: null
+    opened: null,
+    newItem: null
   };
 
   /* Справочник предметов игры: shortname -> [EN, RU]. */
@@ -110,6 +111,8 @@
 
   function entryCost(entry) {
     if (entry.kind === 'resource') { return Number(entry.data.price) || 0; }
+    var itemData = entry.data;
+    if (itemData && itemData.craft && (!itemData.ingredients || !itemData.ingredients.length)) { return 0; }
     var cost = costOf(entry.data);
     if (cost == null) { return Number(entry.data.sheetCost) || 0; }
     return cost;
@@ -228,6 +231,11 @@
   // missing — shortname указан, но такого предмета в игре нет; unknown — проверить нечем.
   function annotateCatalog() {
     items.forEach(function (item) {
+      if (item.custom) {
+        item.gameShort = '';
+        item.gameState = 'custom';
+        return;
+      }
       var short = String(item.id || '').trim().toLowerCase();
       var real = matchGameItem(item);
       item.gameShort = real || '';
@@ -371,6 +379,8 @@
       if (item.dlc) { tags += '<span class="tag tag--dlc">DLC</span>'; }
       if (entry.kind === 'resource') { tags += '<span class="tag tag--soft">ресурс</span>'; }
       if (entry.kind === 'resource' && !(Number(item.price) > 0)) { tags += '<span class="tag tag--missing">нет цены</span>'; }
+      if (entry.kind === 'item' && item.custom) { tags += '<span class="tag tag--custom">кастомный</span>'; }
+      if (entry.kind === 'item' && recipeChanged(item)) { tags += '<span class="tag tag--changed">рецепт изменён</span>'; }
       html += '<li class="item' + active + '">' +
         '<button type="button" class="item-btn" data-key="' + escapeHtml(entryKey(entry)) + '">' +
           '<span class="item-main">' +
@@ -409,6 +419,10 @@
     if (unpriced) {
       text += ' · без цены: ' + unpriced;
     }
+    var custom = items.filter(function (item) { return item.custom; }).length;
+    if (custom) {
+      text += ' · кастомных: ' + custom;
+    }
     return text;
   }
 
@@ -420,7 +434,10 @@
       var item = entry.data;
       var cost = entry.kind === 'resource' ? Number(item.price) || 0 : costOf(item);
       html += '<tr>' +
-        '<td>' + escapeHtml(item.name) + '<span class="cell-sub">' + escapeHtml(item.id || '—') + '</span></td>' +
+        '<td>' + escapeHtml(item.name) +
+          (item.custom ? ' <span class="tag tag--custom">кастомный</span>' : '') +
+          (recipeChanged(item) ? ' <span class="tag tag--changed">рецепт изменён</span>' : '') +
+          '<span class="cell-sub">' + escapeHtml(item.id || '—') + '</span></td>' +
         '<td><span class="' + rarityClass(item.rarity) + '">' + escapeHtml(item.rarity || '—') + '</span>' +
           (item.dlc ? ' <span class="tag tag--dlc">DLC</span>' : '') + '</td>' +
         '<td class="num">' + (cost == null ? 'по таблице' : fmtT(cost)) + '</td>' +
@@ -436,6 +453,10 @@
 
   function renderCard() {
     var card = document.getElementById('card');
+    if (state.newItem) {
+      renderNewItem(card);
+      return;
+    }
     if (!state.opened) {
       card.innerHTML = '<div class="card-empty"><p>Выберите предмет, чтобы увидеть рецепт, цены и стак.</p></div>';
       return;
@@ -455,6 +476,8 @@
       '<h2>' + escapeHtml(item.name) + '</h2>' +
       '<div class="card-tags"><span class="' + rarityClass(item.rarity) + '">' + escapeHtml(item.rarity || '—') + '</span>' +
       (item.dlc ? '<span class="tag tag--dlc">DLC</span>' : '') +
+      (entry.kind === 'item' && item.custom ? '<span class="tag tag--custom">кастомный</span>' : '') +
+      (entry.kind === 'item' && recipeChanged(item) ? '<span class="tag tag--changed">рецепт изменён</span>' : '') +
       (entry.kind === 'item' && item.gameState === 'missing' ? '<span class="tag tag--missing">нет в Rust</span>' : '') +
       (entry.kind === 'item' && item.gameState === 'unknown' ? '<span class="tag tag--missing">без shortname</span>' : '') +
       (item.craft ? '<span class="tag tag--soft">крафт</span>' : '<span class="tag tag--soft">' + (kind === 'resource' ? 'ресурс' : 'некрафт') + '</span>') +
@@ -501,27 +524,7 @@
         (!(Number(item.price) > 0) ? '<p class="card-note card-note--warn">Цена не задана: рецепты с этим ресурсом считаются неполными, а предметы берут себестоимость из таблицы.</p>' : '') +
         '<p class="card-note">Цена участвует в себестоимости всех рецептов, где указан этот ресурс, — правка сразу меняет цены предметов.</p>';
     } else if (item.craft) {
-      html += '<h3 class="card-sub">Рецепт</h3>';
-      if (item.ingredients && item.ingredients.length) {
-        html += '<table class="recipe"><thead><tr><th>Ингредиент</th><th class="num">Кол-во</th><th class="num">Цена</th><th class="num">Сумма</th></tr></thead><tbody>';
-        var sum = 0;
-        item.ingredients.forEach(function (ing) {
-          var resource = resourceById[ing.id];
-          var price = unitPrice(ing.id);
-          var total = price == null ? null : price * ing.amount;
-          if (total != null) { sum += total; }
-          html += '<tr><td>' + escapeHtml(resource ? resource.name : (ing.name || ing.id || '?')) + '</td>' +
-            '<td class="num">' + num(ing.amount, 0) + '</td>' +
-            '<td class="num">' + (price == null ? '—' : fmtT(price)) + '</td>' +
-            '<td class="num">' + (total == null ? '—' : fmtT(total)) + '</td></tr>';
-        });
-        html += '</tbody><tfoot><tr><td colspan="3">Итого за крафт</td><td class="num">' + fmtT(sum) + '</td></tr></tfoot></table>';
-        if (costOf(item) == null) {
-          html += '<p class="card-note card-note--warn">Часть ингредиентов не найдена в списке ресурсов — себестоимость взята из таблицы.</p>';
-        }
-      } else {
-        html += '<p class="card-note">Рецепт в таблице не указан.</p>';
-      }
+      html += recipeEditorHtml(item);
     } else {
       html += '<p class="card-note">Некрафтовый предмет. Цены покупки и продажи взяты из таблицы.</p>';
       if (item.source) {
@@ -529,8 +532,15 @@
       }
     }
 
+    if (kind === 'item' && item.custom) {
+      html += customItemEditorHtml(item);
+    }
+
     html += '<div class="card-actions"><button type="button" class="btn btn--ghost" id="btnCloseCard">Закрыть</button></div>';
     card.innerHTML = html;
+
+    bindRecipeEditor(item);
+    if (kind === 'item' && item.custom) { bindCustomItemEditor(item); }
 
     var close = document.getElementById('btnCloseCard');
     if (close) {
@@ -576,7 +586,364 @@
     });
   }
 
+  /* =====================  Редактор рецепта  ===================== */
+
+  // Снимок исходного рецепта: из демо или из импортированной таблицы.
+  function ensureOrigins() {
+    items.forEach(function (item) {
+      if (item.originIngredients === undefined) {
+        item.originIngredients = item.ingredients ? clone(item.ingredients) : null;
+      }
+    });
+  }
+
+  function resetOrigins() {
+    items.forEach(function (item) {
+      item.originIngredients = item.ingredients ? clone(item.ingredients) : null;
+    });
+  }
+
+  function recipeSignature(list) {
+    return (list || []).map(function (ing) {
+      var id = String(ing && (ing.id || ing.name) || '').trim().toLowerCase();
+      var amount = Math.round(Number(ing && ing.amount) || 0);
+      return id + '×' + amount;
+    }).sort().join('|');
+  }
+
+  function recipeChanged(item) {
+    if (!item || !item.craft) { return false; }
+    return recipeSignature(item.ingredients) !== recipeSignature(item.originIngredients);
+  }
+
+  function resourceSelectHtml(selectedId, attrs, fallbackName) {
+    var groups = {};
+    var order = [];
+    resources.forEach(function (resource) {
+      var category = resource.category || 'Прочее';
+      if (!groups[category]) { groups[category] = []; order.push(category); }
+      groups[category].push(resource);
+    });
+    var html = '<select class="ing-pick" ' + (attrs || '') + ' aria-label="Ингредиент">' +
+      '<option value="">— выберите ресурс —</option>';
+    order.forEach(function (category) {
+      html += '<optgroup label="' + escapeHtml(category) + '">';
+      groups[category]
+        .slice()
+        .sort(function (a, b) { return String(a.name).localeCompare(String(b.name), 'ru'); })
+        .forEach(function (resource) {
+          html += '<option value="' + escapeHtml(resource.id) + '"' +
+            (resource.id === selectedId ? ' selected' : '') + '>' +
+            escapeHtml(resource.name) + ' · ' + fmtT(resource.price) + '</option>';
+        });
+      html += '</optgroup>';
+    });
+    if (!selectedId && fallbackName) {
+      html += '<option value="" selected>не найден: ' + escapeHtml(fallbackName) + '</option>';
+    }
+    return html + '</select>';
+  }
+
+  function recipeEditorHtml(item) {
+    var changed = recipeChanged(item);
+    var html = '<h3 class="card-sub">Рецепт' +
+      (changed ? ' <span class="tag tag--changed">изменён</span>' : '') + '</h3>';
+
+    if (item.ingredients && item.ingredients.length) {
+      var sum = 0;
+      html += '<div class="recipe-scroll"><table class="recipe recipe-edit"><thead><tr>' +
+        '<th>Ингредиент</th><th class="num">Кол-во</th><th class="num">Сумма</th><th></th>' +
+        '</tr></thead><tbody>';
+      item.ingredients.forEach(function (ing, index) {
+        var price = unitPrice(ing.id);
+        var total = price == null ? null : price * (Number(ing.amount) || 0);
+        if (total != null) { sum += total; }
+        html += '<tr>' +
+          '<td>' + resourceSelectHtml(ing.id, 'data-ing-pick="' + index + '"', ing.name) + '</td>' +
+          '<td class="num"><input class="ing-qty" type="number" min="1" max="999999" step="1" inputmode="numeric" data-ing-qty="' + index + '" value="' + Math.max(1, Math.round(Number(ing.amount) || 1)) + '" aria-label="Количество"></td>' +
+          '<td class="num">' + (total == null ? '—' : fmtT(total)) + '</td>' +
+          '<td class="num"><button type="button" class="icon-btn" data-ing-del="' + index + '" title="Удалить ингредиент" aria-label="Удалить ингредиент">×</button></td>' +
+          '</tr>';
+      });
+      html += '</tbody><tfoot><tr><td colspan="2">Итого за крафт</td><td class="num">' + fmtT(sum) + '</td><td></td></tr></tfoot></table></div>';
+      if (costOf(item) == null) {
+        html += '<p class="card-note card-note--warn">Часть ингредиентов не найдена в списке ресурсов — себестоимость взята из таблицы.</p>';
+      }
+    } else {
+      html += '<p class="card-note card-note--warn">Рецепт пуст: себестоимость и обе цены — 0 ₮.</p>';
+    }
+
+    html += '<div class="recipe-add">' +
+      resourceSelectHtml('', 'id="ingPick"', '') +
+      '<input id="ingQty" type="number" min="1" max="999999" step="1" inputmode="numeric" value="1" aria-label="Количество нового ингредиента">' +
+      '<button type="button" class="btn btn--ghost" id="btnIngAdd">+ Добавить</button>' +
+      '</div>';
+
+    if (changed) {
+      html += '<div class="recipe-actions"><button type="button" class="btn btn--ghost" id="btnRecipeReset">Вернуть исходный рецепт</button></div>';
+    }
+    return html;
+  }
+
+  function bindRecipeEditor(item) {
+    var card = document.getElementById('card');
+    if (!card || !item || !item.craft) { return; }
+
+    var reset = document.getElementById('btnRecipeReset');
+    if (reset) {
+      reset.addEventListener('click', function () {
+        item.ingredients = clone(item.originIngredients || []);
+        saveState();
+        refreshCard();
+        toast(item.name + ': рецепт возвращён к исходному');
+      });
+    }
+
+    var addButton = document.getElementById('btnIngAdd');
+    if (addButton) {
+      addButton.addEventListener('click', function () {
+        var pick = document.getElementById('ingPick');
+        var qty = document.getElementById('ingQty');
+        var id = pick ? pick.value : '';
+        if (!id) { toast('Выберите ресурс для нового ингредиента'); return; }
+        var amount = Math.max(1, Math.min(999999, Math.round(Number(qty && qty.value) || 1)));
+        item.ingredients = item.ingredients || [];
+        var existing = null;
+        item.ingredients.forEach(function (ing) { if (ing.id === id) { existing = ing; } });
+        if (existing) {
+          existing.amount = Math.round(Number(existing.amount) || 0) + amount;
+        } else {
+          item.ingredients.push({ id: id, amount: amount });
+        }
+        saveState();
+        refreshCard();
+        var resource = resourceById[id];
+        toast('В рецепт добавлено: ' + (resource ? resource.name : id) + ' ×' + amount);
+      });
+    }
+
+    card.querySelectorAll('[data-ing-pick]').forEach(function (select) {
+      select.addEventListener('change', function () {
+        var index = Number(select.getAttribute('data-ing-pick'));
+        var ing = item.ingredients[index];
+        if (!ing) { return; }
+        var id = select.value;
+        if (!id || id === ing.id) { return; }
+        var duplicate = -1;
+        item.ingredients.forEach(function (other, otherIndex) {
+          if (otherIndex !== index && other.id === id) { duplicate = otherIndex; }
+        });
+        if (duplicate >= 0) {
+          item.ingredients[duplicate].amount = Math.round(Number(item.ingredients[duplicate].amount) || 0) +
+            Math.round(Number(ing.amount) || 0);
+          item.ingredients.splice(index, 1);
+        } else {
+          ing.id = id;
+          delete ing.name;
+        }
+        saveState();
+        refreshCard();
+      });
+    });
+
+    card.querySelectorAll('[data-ing-qty]').forEach(function (input) {
+      input.addEventListener('change', function () {
+        var index = Number(input.getAttribute('data-ing-qty'));
+        var ing = item.ingredients[index];
+        if (!ing) { return; }
+        var amount = Math.round(Number(String(input.value).replace(',', '.')) || 0);
+        if (!isFinite(amount) || amount < 1) { amount = 1; }
+        if (amount > 999999) { amount = 999999; }
+        ing.amount = amount;
+        saveState();
+        refreshCard();
+      });
+      input.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') { event.preventDefault(); input.blur(); }
+      });
+    });
+
+    card.querySelectorAll('[data-ing-del]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        var index = Number(button.getAttribute('data-ing-del'));
+        var removed = item.ingredients.splice(index, 1)[0];
+        saveState();
+        refreshCard();
+        if (removed) {
+          var resource = resourceById[removed.id];
+          toast('Из рецепта убрано: ' + (resource ? resource.name : (removed.name || removed.id)));
+        }
+      });
+    });
+  }
+
+  /* =====================  Кастомные предметы  ===================== */
+
+  function raritySelectHtml(selected) {
+    return RARITY_NAMES.map(function (name) {
+      return '<option value="' + escapeHtml(name) + '"' + (name === selected ? ' selected' : '') + '>' +
+        escapeHtml(name) + '</option>';
+    }).join('');
+  }
+
+  function uniqueShortname(base) {
+    var id = base;
+    var index = 2;
+    while (itemById[id] || resourceById[id]) { id = base + '.' + index; index++; }
+    return id;
+  }
+
+  function syncCategoryOptions() {
+    var list = document.getElementById('catOptions');
+    if (!list) { return; }
+    var seen = {};
+    var html = '';
+    items.forEach(function (item) {
+      var category = item.category || 'Прочее';
+      if (seen[category]) { return; }
+      seen[category] = 1;
+      html += '<option value="' + escapeHtml(category) + '"></option>';
+    });
+    list.innerHTML = html;
+  }
+
+  function openNewItem() {
+    var category = state.category === 'all' || state.category === 'resources' ? '' : state.category;
+    state.newItem = { category: category };
+    state.opened = null;
+    renderAll();
+    var name = document.getElementById('newName');
+    if (name) { name.focus(); }
+  }
+
+  function renderNewItem(card) {
+    var preset = state.newItem && state.newItem.category ? state.newItem.category : '';
+    card.innerHTML = '<div class="card-head"><h2>Новый предмет</h2>' +
+        '<div class="card-tags"><span class="tag tag--custom">кастомный</span></div></div>' +
+      '<div class="custom-form">' +
+        '<label class="form-row"><span>Название</span><input id="newName" autocomplete="off" placeholder="Например, Самодельный дробовик"></label>' +
+        '<label class="form-row"><span>Shortname</span><input id="newShort" autocomplete="off" placeholder="custom.название"></label>' +
+        '<label class="form-row"><span>Категория</span><input id="newCategory" list="catOptions" value="' + escapeHtml(preset) + '" placeholder="Кастомные"></label>' +
+        '<label class="form-row"><span>Редкость</span><select id="newRarity">' + raritySelectHtml('Обычный') + '</select></label>' +
+        '<label class="form-row"><span>Стак</span><input id="newStack" type="number" min="1" step="1" value="1"></label>' +
+        '<label class="form-row"><span>Макс. продаж/день</span><input id="newMax" type="number" min="0" step="1" value="0"></label>' +
+        '<label class="form-row form-row--check"><input type="checkbox" id="newDlc"><span>DLC-предмет</span></label>' +
+      '</div>' +
+      '<p class="card-note">После создания откроется карточка предмета — добавьте в неё ингредиенты рецепта.</p>' +
+      '<div class="recipe-actions">' +
+        '<button type="button" class="btn" id="btnCreateItem">Создать</button>' +
+        '<button type="button" class="btn btn--ghost" id="btnCancelNew">Отмена</button>' +
+      '</div>';
+
+    document.getElementById('btnCancelNew').addEventListener('click', function () {
+      state.newItem = null;
+      renderAll();
+    });
+    document.getElementById('btnCreateItem').addEventListener('click', createCustomItem);
+    document.getElementById('newName').addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); createCustomItem(); }
+    });
+  }
+
+  function createCustomItem() {
+    var name = String(document.getElementById('newName').value || '').trim();
+    if (!name) { toast('Введите название предмета'); return; }
+    var short = String(document.getElementById('newShort').value || '').trim();
+    if (!short) { short = 'custom.' + slug(name); }
+    short = uniqueShortname(short);
+    var category = String(document.getElementById('newCategory').value || '').trim() || 'Кастомные';
+    var item = {
+      id: short,
+      name: name,
+      category: category,
+      rarity: document.getElementById('newRarity').value,
+      dlc: document.getElementById('newDlc').checked,
+      stack: Math.max(1, Math.round(Number(document.getElementById('newStack').value) || 1)),
+      maxPerDay: Math.max(0, Math.round(Number(document.getElementById('newMax').value) || 0)),
+      craft: true,
+      custom: true,
+      ingredients: [],
+      originIngredients: []
+    };
+    items.push(item);
+    rebuildIndexes();
+    annotateCatalog();
+    saveState();
+    state.newItem = null;
+    state.opened = 'item:' + item.id;
+    renderAll();
+    toast('Создан предмет «' + name + '» — добавьте ингредиенты');
+  }
+
+  function customItemEditorHtml(item) {
+    return '<h3 class="card-sub">Параметры предмета</h3>' +
+      '<div class="custom-form">' +
+        '<label class="form-row"><span>Название</span><input id="editName" value="' + escapeHtml(item.name) + '"></label>' +
+        '<label class="form-row"><span>Shortname</span><input id="editShort" value="' + escapeHtml(item.id) + '"></label>' +
+        '<label class="form-row"><span>Категория</span><input id="editCategory" list="catOptions" value="' + escapeHtml(item.category || '') + '"></label>' +
+        '<label class="form-row"><span>Редкость</span><select id="editRarity">' + raritySelectHtml(item.rarity) + '</select></label>' +
+        '<label class="form-row"><span>Стак</span><input id="editStack" type="number" min="1" step="1" value="' + (Number(item.stack) || 1) + '"></label>' +
+        '<label class="form-row"><span>Макс. продаж/день</span><input id="editMax" type="number" min="0" step="1" value="' + (Number(item.maxPerDay) || 0) + '"></label>' +
+        '<label class="form-row form-row--check"><input type="checkbox" id="editDlc"' + (item.dlc ? ' checked' : '') + '><span>DLC-предмет</span></label>' +
+      '</div>' +
+      '<div class="recipe-actions">' +
+        '<button type="button" class="btn" id="btnSaveItem">Сохранить</button>' +
+        '<button type="button" class="btn btn--danger" id="btnDeleteItem">Удалить предмет</button>' +
+      '</div>';
+  }
+
+  function bindCustomItemEditor(item) {
+    var save = document.getElementById('btnSaveItem');
+    if (save) {
+      save.addEventListener('click', function () {
+        var name = String(document.getElementById('editName').value || '').trim();
+        if (!name) { toast('Название не может быть пустым'); return; }
+        var short = String(document.getElementById('editShort').value || '').trim();
+        if (!short) { short = 'custom.' + slug(name); }
+        if (short !== item.id && itemById[short] && itemById[short] !== item) {
+          short = uniqueShortname(short);
+          toast('Shortname занят — взят ' + short);
+        }
+        item.id = short;
+        item.name = name;
+        item.category = String(document.getElementById('editCategory').value || '').trim() || 'Кастомные';
+        item.rarity = document.getElementById('editRarity').value;
+        item.stack = Math.max(1, Math.round(Number(document.getElementById('editStack').value) || 1));
+        item.maxPerDay = Math.max(0, Math.round(Number(document.getElementById('editMax').value) || 0));
+        item.dlc = document.getElementById('editDlc').checked;
+        rebuildIndexes();
+        annotateCatalog();
+        saveState();
+        state.opened = 'item:' + item.id;
+        renderAll();
+        toast('Сохранено: ' + item.name);
+      });
+    }
+
+    var remove = document.getElementById('btnDeleteItem');
+    if (remove) {
+      remove.addEventListener('click', function () {
+        if (!window.confirm('Удалить предмет «' + item.name + '»? Рецепт тоже будет удалён.')) { return; }
+        items = items.filter(function (candidate) { return candidate !== item; });
+        rebuildIndexes();
+        annotateCatalog();
+        state.opened = null;
+        saveState();
+        renderAll();
+        toast('Предмет удалён');
+      });
+    }
+  }
+
+  function refreshCard() {
+    var card = document.getElementById('card');
+    var top = card ? card.scrollTop : 0;
+    renderAll();
+    if (card) { card.scrollTop = top; }
+  }
+
   function renderAll() {
+    syncCategoryOptions();
     renderCategories();
     if (state.view === 'table') {
       document.getElementById('list').hidden = true;
@@ -886,11 +1253,17 @@
       ]);
     });
 
-    var craftHeader = ['#', 'Категория', 'Название предмета', 'Редкость', 'DLC',
-      'Ингредиент 1', 'Кол-во 1', 'Ингредиент 2', 'Кол-во 2', 'Ингредиент 3', 'Кол-во 3',
-      'Ингредиент 4', 'Кол-во 4', 'Ингредиент 5', 'Кол-во 5',
-      '📦 Стак', '💲 Себестоимость (₮)', '🛒 Цена покупки у магазина (₮)', '💰 Цена продажи магазину (₮)',
-      '📊 Макс. продаж/день', '🔑 Shortname'];
+    var ingredientColumns = 5;
+    items.forEach(function (item) {
+      var count = item.craft && item.ingredients ? item.ingredients.length : 0;
+      if (count > ingredientColumns) { ingredientColumns = count; }
+    });
+    var craftHeader = ['#', 'Категория', 'Название предмета', 'Редкость', 'DLC'];
+    for (var column = 1; column <= ingredientColumns; column++) {
+      craftHeader.push('Ингредиент ' + column, 'Кол-во ' + column);
+    }
+    craftHeader.push('📦 Стак', '💲 Себестоимость (₮)', '🛒 Цена покупки у магазина (₮)',
+      '💰 Цена продажи магазину (₮)', '📊 Макс. продаж/день', '🔑 Shortname', 'Кастомный');
     var craftRows = [craftHeader];
     var lootHeader = ['#', 'Категория', 'Название предмета', 'Редкость', 'DLC', '📦 Стак', 'Цвет редкости',
       'Где найти', '🛒 Цена покупки у магазина (₮)', '💰 Цена продажи магазину (₮)', '🔑 Shortname'];
@@ -902,7 +1275,7 @@
       if (item.craft) {
         var row = [craftRows.length, item.category || '', item.name, item.rarity || '', item.dlc ? 'Да' : 'Нет'];
         var ingredients = item.ingredients || [];
-        for (var i = 0; i < 5; i++) {
+        for (var i = 0; i < ingredientColumns; i++) {
           var ing = ingredients[i];
           var resource = ing && ing.id ? resourceById[ing.id] : null;
           row.push(ing ? (resource ? resource.name : (ing.name || '')) : '');
@@ -914,6 +1287,7 @@
         row.push(round2(entrySell(entry)));
         row.push(Number(item.maxPerDay) || 0);
         row.push(item.id || '');
+        row.push(item.custom ? 'Да' : 'Нет');
         craftRows.push(row);
       } else {
         lootRows.push([
@@ -1247,6 +1621,7 @@
       cost: findCol(map, function (k) { return k.indexOf('себестоимость') !== -1; }),
       maxPerDay: findCol(map, function (k) { return k.indexOf('макс') !== -1; }),
       id: findCol(map, function (k) { return k.indexOf('shortname') !== -1; }),
+      custom: findCol(map, function (k) { return k.indexOf('кастомн') !== -1; }),
       ingredient: {},
       amount: {}
     };
@@ -1283,6 +1658,7 @@
         stack: col.stack >= 0 ? parseNum(row[col.stack]) : 0,
         maxPerDay: col.maxPerDay >= 0 ? parseNum(row[col.maxPerDay]) : 0,
         craft: true,
+        custom: col.custom >= 0 ? /да|yes|true/i.test(String(row[col.custom] || '')) : false,
         ingredients: ingredients,
         sheetCost: col.cost >= 0 ? parseNum(row[col.cost]) : 0,
         unresolved: unresolved
@@ -1408,6 +1784,7 @@
         items = craft.concat(loot);
         sourceNote = 'файл ' + (file.name || 'Excel');
         rebuildIndexes();
+        resetOrigins();
         annotateCatalog();
         syncSettingsInputs();
         renderAll();
@@ -1485,6 +1862,7 @@
       var button = e.target.closest('[data-key]');
       if (!button) { return; }
       state.opened = button.getAttribute('data-key');
+      state.newItem = null;
       renderAll();
       if (window.innerWidth <= 900) {
         document.body.classList.add('no-scroll');
@@ -1505,6 +1883,7 @@
     });
 
     document.getElementById('btnAddGameRes').addEventListener('click', addGameResources);
+    document.getElementById('btnNewItem').addEventListener('click', openNewItem);
 
     document.getElementById('btnSettings').addEventListener('click', function () { openSettings(true); });
     document.getElementById('btnCloseSettings').addEventListener('click', function () { openSettings(false); });
@@ -1534,11 +1913,14 @@
     document.getElementById('btnReset').addEventListener('click', function () {
       if (!window.confirm('Вернуть демо-данные и настройки из таблицы?')) { return; }
       settings = clone(DATA.settings);
-      resources = DATA.resources.slice();
-      items = DATA.items.slice();
+      resources = clone(DATA.resources);
+      items = clone(DATA.items);
       sourceNote = 'демо-данные';
       state.opened = null;
+      state.newItem = null;
       rebuildIndexes();
+      ensureOrigins();
+      annotateCatalog();
       try { window.localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ничего */ }
       syncSettingsInputs();
       renderAll();
@@ -1548,6 +1930,7 @@
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape') { return; }
       if (!document.getElementById('settings').hidden) { openSettings(false); }
+      else if (state.newItem) { state.newItem = null; renderAll(); }
       else if (state.opened) { state.opened = null; renderAll(); }
     });
   }
@@ -1575,6 +1958,7 @@
     buildGameIndex();
     loadState();
     rebuildIndexes();
+    ensureOrigins();
     annotateCatalog();
     bindEvents();
     syncSettingsInputs();
