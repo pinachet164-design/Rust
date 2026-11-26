@@ -369,6 +369,23 @@
     '</div>';
   }
 
+  // Ручной стак: запоминаем исходное значение из игры/таблицы, чтобы его можно было вернуть.
+  function stackChanged(item) {
+    return item && item.originStack != null && Number(item.stack) !== Number(item.originStack);
+  }
+
+  function stackEditorHtml(item) {
+    var stack = Math.max(0, Math.round(Number(item.stack) || 0));
+    return '<h3 class="card-sub">Стак</h3>' +
+      '<div class="price-edit">' +
+        '<input id="stackValue" type="number" min="1" step="1" inputmode="numeric" value="' + stack + '" aria-label="Размер стака в штуках">' +
+        '<span class="price-edit-unit">шт. в стаке</span>' +
+        '<button type="button" class="btn" id="btnStackSave">Сохранить</button>' +
+        (item.originStack != null ? '<button type="button" class="btn btn--ghost" id="btnStackReset">Вернуть ' + num(item.originStack, 0) + '</button>' : '') +
+      '</div>' +
+      '<p class="card-note">Стак ни на что не влияет: цены, рецепт и редкость остаются прежними. Меняется подпись в каталоге, карточке и таблице.</p>';
+  }
+
   function renderCategories() {
     var nav = document.getElementById('cats');
     var html = '';
@@ -401,6 +418,7 @@
       if (entry.kind === 'resource' && !(Number(item.price) > 0)) { tags += '<span class="tag tag--missing">нет цены</span>'; }
       if (entry.kind === 'item' && item.custom) { tags += '<span class="tag tag--custom">кастомный</span>'; }
       if (entry.kind === 'item' && recipeChanged(item)) { tags += '<span class="tag tag--changed">рецепт изменён</span>'; }
+      if (stackChanged(item)) { tags += '<span class="tag tag--changed">стак изменён</span>'; }
       html += '<li class="item' + active + '">' +
         '<button type="button" class="item-btn" data-key="' + escapeHtml(entryKey(entry)) + '">' +
           '<span class="item-main">' +
@@ -457,6 +475,7 @@
         '<td>' + escapeHtml(item.name) + ' ' + noteTagHtml(item.note) +
           (item.custom ? ' <span class="tag tag--custom">кастомный</span>' : '') +
           (recipeChanged(item) ? ' <span class="tag tag--changed">рецепт изменён</span>' : '') +
+          (stackChanged(item) ? ' <span class="tag tag--changed">стак изменён</span>' : '') +
           '<span class="cell-sub">' + escapeHtml(item.id || '—') + '</span></td>' +
         '<td><span class="' + rarityClass(item.rarity) + '">' + escapeHtml(item.rarity || '—') + '</span>' +
           (item.dlc ? ' <span class="tag tag--dlc">DLC</span>' : '') + '</td>' +
@@ -498,6 +517,7 @@
       (item.dlc ? '<span class="tag tag--dlc">DLC</span>' : '') +
       (entry.kind === 'item' && item.custom ? '<span class="tag tag--custom">кастомный</span>' : '') +
       (entry.kind === 'item' && recipeChanged(item) ? '<span class="tag tag--changed">рецепт изменён</span>' : '') +
+      (stackChanged(item) ? '<span class="tag tag--changed">стак изменён</span>' : '') +
       (entry.kind === 'item' && item.gameState === 'missing' ? '<span class="tag tag--missing">нет в Rust</span>' : '') +
       (entry.kind === 'item' && item.gameState === 'unknown' ? '<span class="tag tag--missing">без shortname</span>' : '') +
       (item.craft ? '<span class="tag tag--soft">крафт</span>' : '<span class="tag tag--soft">' + (kind === 'resource' ? 'ресурс' : 'некрафт') + '</span>') +
@@ -528,6 +548,8 @@
       '<div><dt>Категория</dt><dd>' + escapeHtml(item.category || '—') + '</dd></div>' +
       '<div><dt>Множитель редкости</dt><dd>×' + num(rarityCoef(item.rarity), 2) + '</dd></div>' +
     '</dl>';
+
+    html += stackEditorHtml(item);
 
     if (kind === 'item' && item.gameState === 'missing') {
       html += '<p class="card-note card-note--warn">Этого shortname нет в списке предметов Rust — сайт скрывает позицию из каталога (галочка «только из Rust»).</p>';
@@ -563,6 +585,7 @@
 
     bindRecipeEditor(item);
     bindNoteEditor(item);
+    bindStackEditor(item);
     if (kind === 'item' && item.custom) { bindCustomItemEditor(item); }
 
     var close = document.getElementById('btnCloseCard');
@@ -898,6 +921,33 @@
     toast('Создан предмет «' + name + '» — добавьте ингредиенты');
   }
 
+  function bindStackEditor(item) {
+    var input = document.getElementById('stackValue');
+    if (!input) { return; }
+    var save = function () {
+      var value = Math.max(1, Math.round(Number(input.value) || 0));
+      if (item.originStack == null) { item.originStack = Number(item.stack) || 0; }
+      item.stack = value;
+      saveState();
+      renderAll();
+      toast(item.name + ': стак ' + num(value, 0) + ' шт.');
+    };
+    document.getElementById('btnStackSave').addEventListener('click', save);
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); save(); }
+    });
+    var reset = document.getElementById('btnStackReset');
+    if (reset) {
+      reset.addEventListener('click', function () {
+        item.stack = Number(item.originStack) || 0;
+        delete item.originStack;
+        saveState();
+        renderAll();
+        toast(item.name + ': стак возвращён');
+      });
+    }
+  }
+
   function bindNoteEditor(item) {
     var input = document.getElementById('noteInput');
     if (!input) { return; }
@@ -930,7 +980,6 @@
         '<label class="form-row"><span>Shortname</span><input id="editShort" value="' + escapeHtml(item.id) + '"></label>' +
         '<label class="form-row"><span>Категория</span><input id="editCategory" list="catOptions" value="' + escapeHtml(item.category || '') + '"></label>' +
         '<label class="form-row"><span>Редкость</span><select id="editRarity">' + raritySelectHtml(item.rarity) + '</select></label>' +
-        '<label class="form-row"><span>Стак</span><input id="editStack" type="number" min="1" step="1" value="' + (Number(item.stack) || 1) + '"></label>' +
         '<label class="form-row"><span>Макс. продаж/день</span><input id="editMax" type="number" min="0" step="1" value="' + (Number(item.maxPerDay) || 0) + '"></label>' +
         '<label class="form-row form-row--check"><input type="checkbox" id="editDlc"' + (item.dlc ? ' checked' : '') + '><span>DLC-предмет</span></label>' +
       '</div>' +
@@ -956,7 +1005,6 @@
         item.name = name;
         item.category = String(document.getElementById('editCategory').value || '').trim() || 'Кастомные';
         item.rarity = document.getElementById('editRarity').value;
-        item.stack = Math.max(1, Math.round(Number(document.getElementById('editStack').value) || 1));
         item.maxPerDay = Math.max(0, Math.round(Number(document.getElementById('editMax').value) || 0));
         item.dlc = document.getElementById('editDlc').checked;
         rebuildIndexes();
