@@ -337,6 +337,45 @@ button, input, select { font: inherit; color: inherit; }
 .tag--soft { color: var(--muted); }
 .tag--missing { color: var(--rust-soft); border-color: #6d2a20; }
 
+/* ---------- выбор редкости в карточке ---------- */
+
+.rarity-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.rarity-edit-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-right: 2px;
+}
+
+.rarity-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 0.76rem;
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.rarity-chip:hover { border-color: var(--rust); color: var(--text); }
+.rarity-chip:focus-visible { outline: 2px solid var(--rust-soft); outline-offset: 2px; }
+
+.rarity-chip.is-active {
+  border-color: currentColor;
+  background: rgba(255, 255, 255, 0.06);
+  font-weight: 600;
+}
+
 /* ---------- таблица ---------- */
 
 .table-wrap {

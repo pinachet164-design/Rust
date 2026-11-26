@@ -404,6 +404,15 @@
       (item.craft ? '<span class="tag tag--soft">крафт</span>' : '<span class="tag tag--soft">' + (kind === 'resource' ? 'ресурс' : 'некрафт') + '</span>') +
       '</div>' +
       '<p class="shortname">' + escapeHtml(item.id || 'без shortname') + '</p>' +
+      '<div class="rarity-edit" role="group" aria-label="Редкость предмета">' +
+        '<span class="rarity-edit-label">Редкость</span>' +
+        RARITY_NAMES.map(function (name) {
+          var on = String(item.rarity || '') === name;
+          return '<button type="button" class="rarity-chip tag--' + name.toLowerCase() + (on ? ' is-active' : '') + '"' +
+            ' data-set-rarity="' + escapeHtml(name) + '" aria-pressed="' + (on ? 'true' : 'false') + '">' +
+            escapeHtml(name) + '</button>';
+        }).join('') +
+      '</div>' +
     '</div>';
 
     html += '<div class="price-grid">' +
@@ -463,6 +472,17 @@
     if (close) {
       close.addEventListener('click', function () { state.opened = null; renderAll(); });
     }
+
+    card.querySelectorAll('[data-set-rarity]').forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        var name = chip.getAttribute('data-set-rarity');
+        if (!name || String(item.rarity || '') === name) { return; }
+        item.rarity = name;
+        saveState();
+        renderAll();
+        toast(item.name + ': редкость «' + name + '» — цены пересчитаны');
+      });
+    });
   }
 
   function renderAll() {
