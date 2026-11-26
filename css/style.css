@@ -376,6 +376,33 @@ button, input, select { font: inherit; color: inherit; }
   font-weight: 600;
 }
 
+/* ---------- правка цены ресурса ---------- */
+
+.price-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 10px;
+}
+
+.price-edit input {
+  width: 130px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-s, 8px);
+  background: var(--panel-2, rgba(255, 255, 255, 0.04));
+  color: var(--text);
+  font: inherit;
+}
+
+.price-edit input:focus-visible {
+  outline: 2px solid var(--rust-soft);
+  outline-offset: 2px;
+}
+
+.price-edit-unit { color: var(--muted); font-size: 0.8rem; }
+
 /* ---------- таблица ---------- */
 
 .table-wrap {

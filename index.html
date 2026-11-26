@@ -127,6 +127,13 @@
         <p class="hint">По умолчанию 0,0001 ₮: 1 тугрик = 10 000 скрапа.</p>
       </div>
 
+      <div class="field">
+        <label>Ресурсы и компоненты Rust</label>
+        <p class="hint" id="gameResInfo">Список ресурсов и компонентов из игры, которые участвуют в крафте как ингредиенты.</p>
+        <button type="button" class="btn btn--ghost" id="btnAddGameRes">Добавить недостающие</button>
+        <p class="hint">Добавленные позиции получают цену 0 ₮ — откройте позицию в каталоге и задайте цену. Стак и редкость берутся из игры.</p>
+      </div>
+
       <div class="drawer-actions">
         <button type="button" class="btn" id="btnImport">Загрузить таблицу</button>
         <button type="button" class="btn btn--ghost" id="btnExportXlsx">Скачать Excel</button>
@@ -143,6 +150,7 @@
   </section>
 
   <script src="js/rust-items.js"></script>
+  <script src="js/rust-resources.js"></script>
   <script src="js/data.js"></script>
   <script src="js/app.js"></script>
 </body>

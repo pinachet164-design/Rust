@@ -242,6 +242,57 @@
     return items.filter(function (item) { return item.gameState === stateName; });
   }
 
+  /* =====================  Ресурсы из игры  ===================== */
+
+  function gameResourceList() {
+    return Array.isArray(window.RUST_GAME_RESOURCES) ? window.RUST_GAME_RESOURCES : [];
+  }
+
+  function missingGameResources() {
+    return gameResourceList().filter(function (meta) {
+      return meta && meta.id && !resourceById[meta.id];
+    });
+  }
+
+  function unpricedResources() {
+    return resources.filter(function (resource) { return !(Number(resource.price) > 0); });
+  }
+
+  function syncGameResources() {
+    var info = document.getElementById('gameResInfo');
+    var button = document.getElementById('btnAddGameRes');
+    if (!info || !button) { return; }
+    var book = gameResourceList();
+    var missing = missingGameResources();
+    var unpriced = unpricedResources();
+    info.textContent = 'В игре в крафте участвует ' + book.length + ' ресурсов и компонентов. ' +
+      'В каталоге — ' + resources.length + ', не хватает ' + missing.length + '.' +
+      (unpriced.length ? ' Без цены: ' + unpriced.length + '.' : '');
+    button.textContent = missing.length ? 'Добавить недостающие (' + missing.length + ')' : 'Все ресурсы уже есть';
+    button.disabled = !missing.length;
+  }
+
+  function addGameResources() {
+    var missing = missingGameResources();
+    if (!missing.length) { toast('Все ресурсы из игры уже в каталоге'); return; }
+    missing.forEach(function (meta) {
+      resources.push({
+        id: meta.id,
+        name: meta.name,
+        category: meta.category || 'Ресурсы',
+        rarity: meta.rarity || 'Обычный',
+        price: 0,
+        stack: Number(meta.stack) || 0,
+        maxPerDay: 0,
+        gameOnly: true
+      });
+    });
+    rebuildIndexes();
+    saveState();
+    renderAll();
+    toast('Добавлено из Rust: ' + missing.length + ' — задайте им цену в карточке');
+  }
+
   /* =====================  Фильтр и сортировка  ===================== */
 
   function categories() {
@@ -319,6 +370,7 @@
       var tags = '<span class="' + rarityClass(item.rarity) + '">' + escapeHtml(item.rarity || '—') + '</span>';
       if (item.dlc) { tags += '<span class="tag tag--dlc">DLC</span>'; }
       if (entry.kind === 'resource') { tags += '<span class="tag tag--soft">ресурс</span>'; }
+      if (entry.kind === 'resource' && !(Number(item.price) > 0)) { tags += '<span class="tag tag--missing">нет цены</span>'; }
       html += '<li class="item' + active + '">' +
         '<button type="button" class="item-btn" data-key="' + escapeHtml(entryKey(entry)) + '">' +
           '<span class="item-main">' +
@@ -352,6 +404,10 @@
     }
     if (unknown) {
       text += ' · без shortname: ' + unknown;
+    }
+    var unpriced = unpricedResources().length;
+    if (unpriced) {
+      text += ' · без цены: ' + unpriced;
     }
     return text;
   }
@@ -435,7 +491,15 @@
     }
 
     if (kind === 'resource') {
-      html += '<p class="card-note">Цена ресурса задаётся в таблице и участвует в себестоимости всех рецептов.</p>';
+      html += '<h3 class="card-sub">Базовая цена</h3>' +
+        '<div class="price-edit">' +
+          '<input id="resPrice" type="number" min="0" step="0.01" inputmode="decimal" value="' + (Number(item.price) || 0) + '" aria-label="Базовая цена ресурса в тугриках">' +
+          '<span class="price-edit-unit">₮ за штуку</span>' +
+          '<button type="button" class="btn" id="btnResPrice">Сохранить</button>' +
+          (item.originPrice != null ? '<button type="button" class="btn btn--ghost" id="btnResPriceReset">Вернуть ' + fmtT(Number(item.originPrice) || 0) + '</button>' : '') +
+        '</div>' +
+        (!(Number(item.price) > 0) ? '<p class="card-note card-note--warn">Цена не задана: рецепты с этим ресурсом считаются неполными, а предметы берут себестоимость из таблицы.</p>' : '') +
+        '<p class="card-note">Цена участвует в себестоимости всех рецептов, где указан этот ресурс, — правка сразу меняет цены предметов.</p>';
     } else if (item.craft) {
       html += '<h3 class="card-sub">Рецепт</h3>';
       if (item.ingredients && item.ingredients.length) {
@@ -473,6 +537,33 @@
       close.addEventListener('click', function () { state.opened = null; renderAll(); });
     }
 
+    var priceInput = document.getElementById('resPrice');
+    if (priceInput) {
+      var savePrice = function () {
+        var value = Math.max(0, parseFloat(String(priceInput.value).replace(',', '.')) || 0);
+        if (item.originPrice == null) { item.originPrice = Number(item.price) || 0; }
+        item.price = value;
+        delete item.gameOnly;
+        saveState();
+        renderAll();
+        toast(item.name + ': цена ' + fmtT(value) + ' — цены предметов пересчитаны');
+      };
+      document.getElementById('btnResPrice').addEventListener('click', savePrice);
+      priceInput.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') { event.preventDefault(); savePrice(); }
+      });
+      var resetPrice = document.getElementById('btnResPriceReset');
+      if (resetPrice) {
+        resetPrice.addEventListener('click', function () {
+          item.price = Number(item.originPrice) || 0;
+          delete item.originPrice;
+          saveState();
+          renderAll();
+          toast(item.name + ': цена возвращена');
+        });
+      }
+    }
+
     card.querySelectorAll('[data-set-rarity]').forEach(function (chip) {
       chip.addEventListener('click', function () {
         var name = chip.getAttribute('data-set-rarity');
@@ -498,6 +589,7 @@
       renderList();
     }
     renderCard();
+    syncGameResources();
   }
 
   /* =====================  Настройки  ===================== */
@@ -1411,6 +1503,8 @@
       });
       renderAll();
     });
+
+    document.getElementById('btnAddGameRes').addEventListener('click', addGameResources);
 
     document.getElementById('btnSettings').addEventListener('click', function () { openSettings(true); });
     document.getElementById('btnCloseSettings').addEventListener('click', function () { openSettings(false); });
