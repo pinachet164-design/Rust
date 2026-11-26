@@ -105,7 +105,10 @@
     var resource = resourceById[id];
     if (resource) { return Number(resource.price) || 0; }
     var item = itemById[id];
-    if (item) { return costOf(item, guard); }
+    if (item) {
+      if (!item.craft) { return Number(item.buy) || 0; }
+      return costOf(item, guard);
+    }
     return null;
   }
 
@@ -266,6 +269,77 @@
     return resources.filter(function (resource) { return !(Number(resource.price) > 0); });
   }
 
+  /* =====================  Предметы из игры  ===================== */
+
+  function gameCatalogList() {
+    return Array.isArray(window.RUST_GAME_CATALOG) ? window.RUST_GAME_CATALOG : [];
+  }
+
+  function missingGameItems() {
+    return gameCatalogList().filter(function (meta) {
+      return meta && meta.id && !itemById[meta.id] && !resourceById[meta.id];
+    });
+  }
+
+  function addGameItems(silent) {
+    var marked = 0;
+    gameCatalogList().forEach(function (meta) {
+      if (!meta || !meta.id || !meta.dlc) { return; }
+      var existing = itemById[meta.id];
+      if (existing && !existing.dlc) { existing.dlc = true; marked++; }
+    });
+    var missing = missingGameItems();
+    if (!missing.length) {
+      if (marked) {
+        saveState();
+        if (!silent) { renderAll(); }
+      } else if (!silent) {
+        toast('Все предметы игры уже в каталоге');
+      }
+      return 0;
+    }
+    missing.forEach(function (meta) {
+      var item = {
+        id: meta.id,
+        name: meta.name,
+        category: meta.category || 'Разное',
+        rarity: meta.rarity || 'Обычный',
+        dlc: !!meta.dlc,
+        stack: Number(meta.stack) || 0,
+        maxPerDay: 0,
+        craft: !!meta.craft,
+        gameOnly: true
+      };
+      if (meta.craft) {
+        item.ingredients = clone(meta.ingredients || []);
+        item.originIngredients = clone(meta.ingredients || []);
+      }
+      items.push(item);
+    });
+    rebuildIndexes();
+    annotateCatalog();
+    saveState();
+    if (!silent) {
+      renderAll();
+      toast('Добавлено предметов из Rust: ' + missing.length);
+    }
+    return missing.length;
+  }
+
+  function syncGameItems() {
+    var info = document.getElementById('gameItemInfo');
+    var button = document.getElementById('btnAddGameItems');
+    if (!info || !button) { return; }
+    var book = gameCatalogList();
+    var missing = missingGameItems();
+    var dlc = book.filter(function (meta) { return meta.dlc; }).length;
+    var craft = book.filter(function (meta) { return meta.craft; }).length;
+    info.textContent = 'В игре ' + book.length + ' предметов (' + craft + ' крафтовых, ' + dlc + ' DLC). ' +
+      'Предметов в каталоге: ' + items.length + ', не хватает ' + missing.length + '.';
+    button.textContent = missing.length ? 'Добавить недостающие (' + missing.length + ')' : 'Все предметы уже есть';
+    button.disabled = !missing.length;
+  }
+
   function syncGameResources() {
     var info = document.getElementById('gameResInfo');
     var button = document.getElementById('btnAddGameRes');
@@ -280,9 +354,12 @@
     button.disabled = !missing.length;
   }
 
-  function addGameResources() {
+  function addGameResources(silent) {
     var missing = missingGameResources();
-    if (!missing.length) { toast('Все ресурсы из игры уже в каталоге'); return; }
+    if (!missing.length) {
+      if (!silent) { toast('Все ресурсы из игры уже в каталоге'); }
+      return 0;
+    }
     missing.forEach(function (meta) {
       resources.push({
         id: meta.id,
@@ -297,22 +374,39 @@
     });
     rebuildIndexes();
     saveState();
-    renderAll();
-    toast('Добавлено из Rust: ' + missing.length + ' — задайте им цену в карточке');
+    if (!silent) {
+      renderAll();
+      toast('Добавлено из Rust: ' + missing.length + ' — задайте им цену в карточке');
+    }
+    return missing.length;
   }
 
   /* =====================  Фильтр и сортировка  ===================== */
+
+  var CATEGORY_ORDER = ['Оружие', 'Броня', 'Боеприпасы', 'Взрывчатка', 'Инструменты', 'Строительство',
+    'Электрика', 'Ловушки', 'Еда', 'Медицина', 'Развлечения', 'Предметы', 'Разное', 'Кастомные'];
 
   function categories() {
     var seen = {};
     var order = [];
     items.forEach(function (item) {
+      if (item.dlc) { return; }
       var name = item.category || 'Прочее';
       if (!seen[name]) { seen[name] = 0; order.push(name); }
       seen[name]++;
     });
+    order.sort(function (a, b) {
+      var ia = CATEGORY_ORDER.indexOf(a);
+      var ib = CATEGORY_ORDER.indexOf(b);
+      if (ia === -1) { ia = CATEGORY_ORDER.length; }
+      if (ib === -1) { ib = CATEGORY_ORDER.length; }
+      if (ia !== ib) { return ia - ib; }
+      return String(a).localeCompare(String(b), 'ru');
+    });
+    var dlcCount = items.filter(function (item) { return item.dlc; }).length;
     var list = [{ id: 'all', name: 'Все предметы', count: resources.length + items.length }];
     list.push({ id: 'resources', name: 'Ресурсы', count: resources.length });
+    if (dlcCount) { list.push({ id: 'dlc', name: 'DLC', count: dlcCount }); }
     order.forEach(function (name) {
       list.push({ id: name, name: name, count: seen[name] });
     });
@@ -324,8 +418,9 @@
     var list = entries().filter(function (entry) {
       var item = entry.data;
       if (state.category === 'resources' && entry.kind !== 'resource') { return false; }
-      if (state.category !== 'all' && state.category !== 'resources') {
-        if (entry.kind !== 'item' || item.category !== state.category) { return false; }
+      if (state.category === 'dlc' && (entry.kind !== 'item' || !item.dlc)) { return false; }
+      if (state.category !== 'all' && state.category !== 'resources' && state.category !== 'dlc') {
+        if (entry.kind !== 'item' || item.dlc || item.category !== state.category) { return false; }
       }
       if (state.onlyReal && entry.kind === 'item' && item.gameState === 'missing') { return false; }
       if (state.craftOnly && !item.craft) { return false; }
@@ -438,6 +533,7 @@
     var title = document.getElementById('catTitle');
     if (state.category === 'all') { title.textContent = 'Все предметы'; }
     else if (state.category === 'resources') { title.textContent = 'Ресурсы'; }
+    else if (state.category === 'dlc') { title.textContent = 'DLC предметы'; }
     else { title.textContent = state.category; }
 
     document.getElementById('sourceNote').textContent = sourceSummary();
@@ -1053,6 +1149,7 @@
     }
     renderCard();
     syncGameResources();
+    syncGameItems();
   }
 
   /* =====================  Настройки  ===================== */
@@ -1890,6 +1987,8 @@
         items = craft.concat(loot);
         sourceNote = 'файл ' + (file.name || 'Excel');
         rebuildIndexes();
+        var addedResources = addGameResources(true);
+        var addedItems = addGameItems(true);
         resetOrigins();
         annotateCatalog();
         syncSettingsInputs();
@@ -1905,6 +2004,9 @@
           var names = missing.slice(0, 12).map(function (item) { return escapeHtml(item.name); }).join(', ');
           report.innerHTML = '<strong>Импорт таблицы:</strong> ресурсов ' + resources.length +
             ', крафтовых ' + craft.length + ', некрафтовых ' + loot.length + '.' +
+            (addedItems || addedResources
+              ? '<br>Из игры добавлено: ' + addedItems + ' предметов и ' + addedResources + ' ресурсов.'
+              : '') +
             (unresolved ? '<br>Рецептов с неизвестными ингредиентами: ' + unresolved +
               ' — у них себестоимость взята из таблицы.' : '') +
             (missing.length
@@ -1988,7 +2090,8 @@
       renderAll();
     });
 
-    document.getElementById('btnAddGameRes').addEventListener('click', addGameResources);
+    document.getElementById('btnAddGameRes').addEventListener('click', function () { addGameResources(); });
+    document.getElementById('btnAddGameItems').addEventListener('click', function () { addGameItems(); });
     document.getElementById('btnNewItem').addEventListener('click', openNewItem);
 
     document.getElementById('btnSettings').addEventListener('click', function () { openSettings(true); });
@@ -2025,6 +2128,8 @@
       state.opened = null;
       state.newItem = null;
       rebuildIndexes();
+      addGameResources(true);
+      addGameItems(true);
       ensureOrigins();
       annotateCatalog();
       try { window.localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ничего */ }
@@ -2063,6 +2168,9 @@
   function init() {
     buildGameIndex();
     loadState();
+    rebuildIndexes();
+    addGameResources(true);
+    addGameItems(true);
     rebuildIndexes();
     ensureOrigins();
     annotateCatalog();
