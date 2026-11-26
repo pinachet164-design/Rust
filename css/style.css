@@ -287,6 +287,10 @@ button, input, select { font: inherit; color: inherit; }
 
 .item-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 
+.item-title { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.item-title .item-name { min-width: 0; }
+.item-title .tag { flex: 0 0 auto; }
+
 .item-name {
   font-weight: 600;
   overflow: hidden;
@@ -544,6 +548,42 @@ button, input, select { font: inherit; color: inherit; }
 
 .tag--custom { color: #d9c27a; border-color: #5b4a22; background: rgba(217, 169, 74, 0.08); }
 .tag--changed { color: #93c5fd; border-color: #2f4a6b; }
+
+/* личная заметка-название: своя рамка и цвет, рядом с оригинальным названием */
+.tag--note {
+  color: #d8b4fe;
+  border: 1px solid #7c4d9e;
+  border-radius: 6px;
+  background: rgba(168, 85, 247, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(216, 180, 254, 0.12);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.note-edit {
+  margin: 10px 0 4px;
+  padding: 9px 10px;
+  background: rgba(168, 85, 247, 0.07);
+  border: 1px dashed #6b3f8a;
+  border-radius: 8px;
+}
+
+.note-edit-label { display: block; color: var(--muted); font-size: 0.72rem; margin-bottom: 6px; }
+.note-edit-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.note-edit-row input {
+  flex: 1 1 120px;
+  min-width: 0;
+  padding: 6px 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.82rem;
+}
+
+.note-edit-row input:focus-visible { outline: 2px solid #a855f7; outline-offset: 1px; }
+.note-edit-row .btn { padding: 6px 10px; font-size: 0.8rem; }
+.note-edit .card-note { margin-top: 6px; font-size: 0.75rem; }
 
 .recipe-scroll { overflow-x: auto; }
 

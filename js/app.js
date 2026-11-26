@@ -330,7 +330,7 @@
       if (state.onlyReal && entry.kind === 'item' && item.gameState === 'missing') { return false; }
       if (state.craftOnly && !item.craft) { return false; }
       if (!search) { return true; }
-      var haystack = (item.name + ' ' + (item.id || '') + ' ' + (item.rarity || '')).toLowerCase();
+      var haystack = (item.name + ' ' + (item.id || '') + ' ' + (item.rarity || '') + ' ' + (item.note || '')).toLowerCase();
       return haystack.indexOf(search) !== -1;
     });
 
@@ -347,6 +347,26 @@
 
   function rarityClass(rarity) {
     return 'tag tag--' + String(rarity || '').toLowerCase();
+  }
+
+  // Личная заметка-название: выводится рядом с оригинальным названием и ни на что не влияет.
+  function noteTagHtml(note) {
+    var text = String(note == null ? '' : note).trim();
+    if (!text) { return ''; }
+    return '<span class="tag tag--note">' + escapeHtml(text) + '</span>';
+  }
+
+  function noteEditorHtml(item) {
+    var note = String(item.note == null ? '' : item.note);
+    return '<div class="note-edit">' +
+      '<label class="note-edit-label" for="noteInput">Моя заметка — название для себя</label>' +
+      '<div class="note-edit-row">' +
+        '<input id="noteInput" maxlength="60" autocomplete="off" value="' + escapeHtml(note) + '" placeholder="Например, для фарма">' +
+        '<button type="button" class="btn" id="btnNoteSave">Сохранить</button>' +
+        (note ? '<button type="button" class="btn btn--ghost" id="btnNoteClear">Убрать</button>' : '') +
+      '</div>' +
+      '<p class="card-note">Видно только вам: цена, рецепт и каталог не меняются. Заметка сохраняется в браузере и выгружается в Excel.</p>' +
+    '</div>';
   }
 
   function renderCategories() {
@@ -384,7 +404,7 @@
       html += '<li class="item' + active + '">' +
         '<button type="button" class="item-btn" data-key="' + escapeHtml(entryKey(entry)) + '">' +
           '<span class="item-main">' +
-            '<span class="item-name">' + escapeHtml(item.name) + '</span>' +
+            '<span class="item-title"><span class="item-name">' + escapeHtml(item.name) + '</span>' + noteTagHtml(item.note) + '</span>' +
             '<span class="item-sub">' + escapeHtml(item.id || '—') + ' · стак ' + num(item.stack, 0) + '</span>' +
           '</span>' +
           '<span class="item-tags">' + tags + '</span>' +
@@ -434,7 +454,7 @@
       var item = entry.data;
       var cost = entry.kind === 'resource' ? Number(item.price) || 0 : costOf(item);
       html += '<tr>' +
-        '<td>' + escapeHtml(item.name) +
+        '<td>' + escapeHtml(item.name) + ' ' + noteTagHtml(item.note) +
           (item.custom ? ' <span class="tag tag--custom">кастомный</span>' : '') +
           (recipeChanged(item) ? ' <span class="tag tag--changed">рецепт изменён</span>' : '') +
           '<span class="cell-sub">' + escapeHtml(item.id || '—') + '</span></td>' +
@@ -473,7 +493,7 @@
     var cost = entryCost(entry);
 
     var html = '<div class="card-head">' +
-      '<h2>' + escapeHtml(item.name) + '</h2>' +
+      '<h2>' + escapeHtml(item.name) + ' ' + noteTagHtml(item.note) + '</h2>' +
       '<div class="card-tags"><span class="' + rarityClass(item.rarity) + '">' + escapeHtml(item.rarity || '—') + '</span>' +
       (item.dlc ? '<span class="tag tag--dlc">DLC</span>' : '') +
       (entry.kind === 'item' && item.custom ? '<span class="tag tag--custom">кастомный</span>' : '') +
@@ -493,6 +513,8 @@
         }).join('') +
       '</div>' +
     '</div>';
+
+    html += noteEditorHtml(item);
 
     html += '<div class="price-grid">' +
       '<div class="price-box"><span>Себестоимость</span><b>' + fmtT(cost) + '</b><small>' + fmtAlt(cost) + '</small></div>' +
@@ -540,6 +562,7 @@
     card.innerHTML = html;
 
     bindRecipeEditor(item);
+    bindNoteEditor(item);
     if (kind === 'item' && item.custom) { bindCustomItemEditor(item); }
 
     var close = document.getElementById('btnCloseCard');
@@ -875,6 +898,31 @@
     toast('Создан предмет «' + name + '» — добавьте ингредиенты');
   }
 
+  function bindNoteEditor(item) {
+    var input = document.getElementById('noteInput');
+    if (!input) { return; }
+    var save = function () {
+      var note = String(input.value || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+      if (note) { item.note = note; } else { delete item.note; }
+      saveState();
+      refreshCard();
+      toast(note ? 'Заметка сохранена: ' + note : 'Заметка убрана');
+    };
+    document.getElementById('btnNoteSave').addEventListener('click', save);
+    input.addEventListener('keydown', function (event) {
+      if (event.key === 'Enter') { event.preventDefault(); save(); }
+    });
+    var clear = document.getElementById('btnNoteClear');
+    if (clear) {
+      clear.addEventListener('click', function () {
+        delete item.note;
+        saveState();
+        refreshCard();
+        toast('Заметка убрана');
+      });
+    }
+  }
+
   function customItemEditorHtml(item) {
     return '<h3 class="card-sub">Параметры предмета</h3>' +
       '<div class="custom-form">' +
@@ -1076,7 +1124,7 @@
   }
 
   function exportCsv() {
-    var lines = ['Shortname;Название;Категория;Редкость;DLC;Стак;Себестоимость;Покупка;Продажа;Макс/день'];
+    var lines = ['Shortname;Название;Категория;Редкость;DLC;Стак;Себестоимость;Покупка;Продажа;Макс/день;Заметка'];
     visibleEntries().forEach(function (entry) {
       var item = entry.data;
       var cost = entryCost(entry);
@@ -1090,7 +1138,8 @@
         Math.round(cost * 100) / 100,
         Math.round(entryBuy(entry) * 100) / 100,
         Math.round(entrySell(entry) * 100) / 100,
-        item.maxPerDay || ''
+        item.maxPerDay || '',
+        item.note || ''
       ].map(function (cell) { return String(cell).replace(/;/g, ','); }).join(';'));
     });
     download('rust-economy.csv', '\uFEFF' + lines.join('\r\n'), 'text/csv;charset=utf-8');
@@ -1237,7 +1286,7 @@
     settingsRows.push(['Курс: тугриков за 1 ₽', 'rub_rate', Number(settings.rubRate) || 1]);
     settingsRows.push(['Цена 1 скрапа в тугриках', 'scrap_price', Number(settings.scrapPrice) || 1]);
 
-    var resourceRows = [['#', 'Ресурс', 'Категория', 'Редкость', 'Базовая цена (₮)', '📦 Стак', 'Цвет редкости', 'Примечание', '📊 Макс. продаж/день', '🔑 Shortname']];
+    var resourceRows = [['#', 'Ресурс', 'Категория', 'Редкость', 'Базовая цена (₮)', '📦 Стак', 'Цвет редкости', 'Примечание', '📊 Макс. продаж/день', '🔑 Shortname', 'Заметка']];
     resources.forEach(function (resource, index) {
       resourceRows.push([
         index + 1,
@@ -1249,7 +1298,8 @@
         resource.rarity || '',
         '',
         Number(resource.maxPerDay) || 0,
-        resource.id || ''
+        resource.id || '',
+        resource.note || ''
       ]);
     });
 
@@ -1263,10 +1313,10 @@
       craftHeader.push('Ингредиент ' + column, 'Кол-во ' + column);
     }
     craftHeader.push('📦 Стак', '💲 Себестоимость (₮)', '🛒 Цена покупки у магазина (₮)',
-      '💰 Цена продажи магазину (₮)', '📊 Макс. продаж/день', '🔑 Shortname', 'Кастомный');
+      '💰 Цена продажи магазину (₮)', '📊 Макс. продаж/день', '🔑 Shortname', 'Кастомный', 'Заметка');
     var craftRows = [craftHeader];
     var lootHeader = ['#', 'Категория', 'Название предмета', 'Редкость', 'DLC', '📦 Стак', 'Цвет редкости',
-      'Где найти', '🛒 Цена покупки у магазина (₮)', '💰 Цена продажи магазину (₮)', '🔑 Shortname'];
+      'Где найти', '🛒 Цена покупки у магазина (₮)', '💰 Цена продажи магазину (₮)', '🔑 Shortname', 'Заметка'];
     var lootRows = [lootHeader];
 
     items.forEach(function (item) {
@@ -1288,6 +1338,7 @@
         row.push(Number(item.maxPerDay) || 0);
         row.push(item.id || '');
         row.push(item.custom ? 'Да' : 'Нет');
+        row.push(item.note || '');
         craftRows.push(row);
       } else {
         lootRows.push([
@@ -1301,7 +1352,8 @@
           item.source || '',
           round2(entryBuy(entry)),
           round2(entrySell(entry)),
-          item.id || ''
+          item.id || '',
+          item.note || ''
         ]);
       }
     });
@@ -1588,7 +1640,8 @@
       price: findCol(map, function (k) { return k.indexOf('базовая цена') !== -1; }),
       stack: findCol(map, function (k) { return k.indexOf('стак') !== -1; }),
       maxPerDay: findCol(map, function (k) { return k.indexOf('макс') !== -1; }),
-      id: findCol(map, function (k) { return k.indexOf('shortname') !== -1; })
+      id: findCol(map, function (k) { return k.indexOf('shortname') !== -1; }),
+      note: findCol(map, function (k) { return k.indexOf('заметка') !== -1; })
     };
     if (col.name < 0 || col.price < 0) { return []; }
     var list = [];
@@ -1604,7 +1657,8 @@
         rarity: col.rarity >= 0 ? String(row[col.rarity] || '').trim() : '',
         price: parseNum(row[col.price]),
         stack: col.stack >= 0 ? parseNum(row[col.stack]) : 0,
-        maxPerDay: col.maxPerDay >= 0 ? parseNum(row[col.maxPerDay]) : 0
+        maxPerDay: col.maxPerDay >= 0 ? parseNum(row[col.maxPerDay]) : 0,
+        note: col.note >= 0 ? String(row[col.note] == null ? '' : row[col.note]).trim() : ''
       });
     }
     return list;
@@ -1622,6 +1676,7 @@
       maxPerDay: findCol(map, function (k) { return k.indexOf('макс') !== -1; }),
       id: findCol(map, function (k) { return k.indexOf('shortname') !== -1; }),
       custom: findCol(map, function (k) { return k.indexOf('кастомн') !== -1; }),
+      note: findCol(map, function (k) { return k.indexOf('заметка') !== -1; }),
       ingredient: {},
       amount: {}
     };
@@ -1659,6 +1714,7 @@
         maxPerDay: col.maxPerDay >= 0 ? parseNum(row[col.maxPerDay]) : 0,
         craft: true,
         custom: col.custom >= 0 ? /да|yes|true/i.test(String(row[col.custom] || '')) : false,
+        note: col.note >= 0 ? String(row[col.note] == null ? '' : row[col.note]).trim() : '',
         ingredients: ingredients,
         sheetCost: col.cost >= 0 ? parseNum(row[col.cost]) : 0,
         unresolved: unresolved
@@ -1678,7 +1734,8 @@
       buy: findCol(map, function (k) { return k.indexOf('цена покупки') !== -1; }),
       sell: findCol(map, function (k) { return k.indexOf('цена продажи') !== -1; }),
       source: findCol(map, function (k) { return k.indexOf('где найти') !== -1; }),
-      id: findCol(map, function (k) { return k.indexOf('shortname') !== -1; })
+      id: findCol(map, function (k) { return k.indexOf('shortname') !== -1; }),
+      note: findCol(map, function (k) { return k.indexOf('заметка') !== -1; })
     };
     if (col.name < 0) { return []; }
     var list = [];
@@ -1698,7 +1755,8 @@
         craft: false,
         buy: col.buy >= 0 ? parseNum(row[col.buy]) : 0,
         sell: col.sell >= 0 ? parseNum(row[col.sell]) : 0,
-        source: col.source >= 0 ? String(row[col.source] || '').trim() : ''
+        source: col.source >= 0 ? String(row[col.source] || '').trim() : '',
+        note: col.note >= 0 ? String(row[col.note] == null ? '' : row[col.note]).trim() : ''
       });
     }
     return list;
